@@ -1,0 +1,53 @@
+{
+  "server_id": "time",
+  "tools": [
+    {
+      "name": "get_current_time",
+      "description": "Get the current time in a specified timezone.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier, e.g. 'America/New_York' or 'UTC'"
+          }
+        },
+        "required": ["timezone"]
+      }
+    },
+    {
+      "name": "convert_time",
+      "description": "Convert a time from one timezone to another.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source_timezone": {
+            "type": "string",
+            "description": "Source IANA timezone identifier"
+          },
+          "target_timezone": {
+            "type": "string",
+            "description": "Target IANA timezone identifier"
+          },
+          "time": {
+            "type": "string",
+            "description": "Time string in HH:MM format"
+          }
+        },
+        "required": ["source_timezone", "target_timezone", "time"]
+      }
+    }
+  ],
+  "sample_calls": {
+    "get_current_time": {
+      "input": {
+        "timezone": "America/New_York"
+      },
+      "output": {
+        "timezone": "America/New_York",
+        "datetime": "2026-10-19T07:44:00-04:00",
+        "is_dst": true
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@
 
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
+from ulid import ULID
 
 from veilgate.config.constants import ReasonCode
 from veilgate.config.policy_models import (
@@ -50,7 +51,7 @@ class SessionContext(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     session_id: str
-    correlation_id: str
+    correlation_id: str = Field(default_factory=lambda: str(ULID()))
     integrity: str = "HIGH"
     transport: Transport = Transport.STDIO
     client_supports_elicitation: bool = False

@@ -1,0 +1,61 @@
+{
+  "server_id": "filesystem",
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read the complete contents of a file from the local filesystem.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to file to read"
+          }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Create a new file or overwrite an existing file with new content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to file to write"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content string to write"
+          }
+        },
+        "required": ["path", "content"]
+      }
+    },
+    {
+      "name": "list_directory",
+      "description": "List all directory entries and subdirectories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["path"]
+      }
+    }
+  ],
+  "sample_calls": {
+    "read_file": {
+      "input": {
+        "path": "customers.csv"
+      },
+      "output": {
+        "path": "customers.csv",
+        "content": "id,name,email,ssn\n1,Alice Smith,alice@corp.com,000-12-3456\n2,Bob Jones,bob@partner.org,111-22-3333\n"
+      }
+    }
+  }
+}

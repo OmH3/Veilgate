@@ -1,0 +1,83 @@
+{
+  "server_id": "invoicedb",
+  "tools": [
+    {
+      "name": "query_invoices",
+      "description": "Query database for matching customer invoices.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "PAID", "CANCELLED"]
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        }
+      }
+    },
+    {
+      "name": "get_vendor_details",
+      "description": "Fetch vendor bank details and confidential margin metrics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vendor_id": {
+            "type": "string"
+          }
+        },
+        "required": ["vendor_id"]
+      }
+    },
+    {
+      "name": "compare_totals",
+      "description": "Compare aggregate sums across multiple invoices for verification.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoice_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["invoice_ids"]
+      }
+    },
+    {
+      "name": "delete_invoice",
+      "description": "Permanently purge an invoice record from the database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoice_id": {
+            "type": "string"
+          }
+        },
+        "required": ["invoice_id"]
+      }
+    }
+  ],
+  "sample_calls": {
+    "get_vendor_details": {
+      "input": {
+        "vendor_id": "vend_9901"
+      },
+      "output": {
+        "vendor_id": "vend_9901",
+        "vendor_name": "Apex Cloud Systems",
+        "bank_account": "987654321098",
+        "routing_number": "021000021",
+        "contact_email": "billing@apexcloud.com",
+        "deal_margin": "48.5%",
+        "salary_band": "L7_DIRECTOR",
+        "_links": {
+          "self": "https://api.internal/vendors/vend_9901",
+          "invoices": "https://api.internal/vendors/vend_9901/invoices"
+        },
+        "internal_row_id": "row_c8f12a9"
+      }
+    }
+  }
+}
