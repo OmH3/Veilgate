@@ -5,7 +5,7 @@ Defines Pydantic V2 models for user policies (policy.yaml), interactive grants
 """
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -288,6 +288,72 @@ class CompactionSpec(BaseModel):
     )
 
 
+class JevPolicy(BaseModel):
+    """Configuration for optional Jev advisory shape classifier and semantic ranker."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=False, description="Enable Jev advisory inference.")
+    mode: Literal["blocking", "shadow"] = Field(
+        default="shadow",
+        description="Blocking mode waits for Jev before continuing; shadow evaluates asynchronously.",
+    )
+    timeout_s: float = Field(default=3.0, ge=0.1, description="Timeout for Jev API requests in seconds.")
+    max_concurrency: int = Field(default=4, ge=1, description="Maximum concurrent Jev requests.")
+    on_unavailable: Literal["deterministic_only"] = Field(
+        default="deterministic_only",
+        description="Graceful fallback when Jev is unreachable or times out.",
+    )
+
+
+class JevQuestion(BaseModel):
+    """Specification of a discrete classification or scoring question for Jev."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: Literal["choice", "score", "noul"] = Field(..., description="Question type.")
+    instructions: str = Field(..., description="Prompt instructions for the model.")
+    criteria: dict[str, str] | list[str] | None = Field(default=None, description="Categories or rating scale criteria.")
+
+
+class JevDecisionRequest(BaseModel):
+    """Payload sent to Jev system-1 endpoint containing strictly shape metadata."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    model: str = Field(default="jev-latest", description="Target Jev model identifier.")
+    state: dict[str, Any] | str = Field(
+        ...,
+        description="Redacted shape representation: keys, types, and paths ONLY. No raw values.",
+    )
+    questions: dict[str, JevQuestion] = Field(
+        ...,
+        description="Batched questions (up to 8 per request).",
+    )
+
+
+class JevAnswer(BaseModel):
+    """Parsed model answer for a single Jev question."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: Literal["choice", "score", "noul"] = Field(..., description="Question type.")
+    choice: str | None = Field(default=None, description="Selected category label.")
+    probabilities: dict[str, float] | None = Field(default=None, description="Category probabilities.")
+    score: float | None = Field(default=None, description="Calculated score.")
+    noul: float | None = Field(default=None, description="Binary probability.")
+    confidence: float | None = Field(default=None, description="Model confidence estimate.")
+
+
+class JevDecisionResponse(BaseModel):
+    """Complete response returned from Jev system-1 API."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    model: str = Field(default="jev-latest", description="Responding model identifier.")
+    answers: dict[str, JevAnswer] = Field(default_factory=dict, description="Answers indexed by question key.")
+
+
 class LearnedGrant(BaseModel):
     """Interactive grant persisted from --dev approval decisions."""
 
@@ -337,6 +403,10 @@ class VeilgatePolicy(BaseModel):
     compaction: CompactionSpec = Field(
         default_factory=CompactionSpec,
         description="Response payload compaction parameters.",
+    )
+    jev: JevPolicy = Field(
+        default_factory=JevPolicy,
+        description="Jev advisory shape classification and ranking policies.",
     )
     learned_grants: list[LearnedGrant] = Field(
         default_factory=list,

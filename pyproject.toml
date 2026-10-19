@@ -36,6 +36,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "typer>=0.15",
     "python-ulid>=3.0",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
