@@ -41,8 +41,8 @@ class UpstreamRegistry:
                         {
                             "name": t.name,
                             "description": t.description or "",
-                            "inputSchema": getattr(t, "input_schema", getattr(t, "inputSchema", {})),
-                            "outputSchema": getattr(t, "output_schema", getattr(t, "outputSchema", None)),
+                            "inputSchema": getattr(t, "input_schema", None) or getattr(t, "inputSchema", {}),
+                            "outputSchema": getattr(t, "output_schema", None) or getattr(t, "outputSchema", None),
                         }
                         for t in tools
                     ]

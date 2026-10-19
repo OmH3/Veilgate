@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 from typing import Annotated, Optional
 
+from rich.console import Console
+from rich.table import Table
 import typer
 import yaml
 
@@ -15,6 +17,8 @@ from veilgate.config.policy_loader import PolicyLoader
 from veilgate.config.policy_models import Transport, UpstreamSpec, VeilgatePolicy
 from veilgate.config.settings import VeilgateSettings
 from veilgate.gateway import create_gateway_pipeline, create_gateway_server
+from veilgate.repositories.audit_repo import AuditRepository
+from veilgate.repositories.db import DatabaseManager
 from veilgate.security.crypto import resolve_master_key
 from veilgate.services.explain_service import ExplainService
 
@@ -183,9 +187,6 @@ def audit(
     settings = VeilgateSettings(db_path=db_path)
 
     async def _audit() -> None:
-        from veilgate.repositories.audit_repo import AuditRepository
-        from veilgate.repositories.db import DatabaseManager
-
         mgr = DatabaseManager(settings.db_path)
         await mgr.initialize()
         repo = AuditRepository(mgr)
@@ -206,14 +207,79 @@ def audit(
 
 
 @app.command()
+def catalog(
+    config: Annotated[Path, typer.Option("--config", "-c", help="Path to policy.yaml")] = Path("./policy.yaml"),
+    from_mcp_json: Annotated[Optional[Path], typer.Option("--from-mcp-json", help="Path to mcp.json directly")] = None,
+    shapes: Annotated[bool, typer.Option("--shapes", help="Display observed response JSON shapes and classifications")] = False,
+) -> None:
+    """Inspect and tabulate upstream tool capabilities, risk ratings, and trust profiles."""
+    settings = VeilgateSettings(policy_path=config)
+    loader = PolicyLoader(
+        policy_path=config if not from_mcp_json else None,
+        from_mcp_json=from_mcp_json,
+    )
+
+    async def _catalog() -> None:
+        pipeline, db_manager = await create_gateway_pipeline(settings, policy_loader=loader)
+        console = Console()
+
+        if shapes:
+            async with db_manager.connection() as conn:
+                cursor = await conn.execute("SELECT * FROM schema_cache ORDER BY qualified_ref;")
+                rows = await cursor.fetchall()
+
+            table = Table(title="Veilgate Observed Schema Shapes & Classifications")
+            table.add_column("Qualified Tool", style="cyan")
+            table.add_column("Shape Fingerprint", style="magenta")
+            table.add_column("Source", style="green")
+            table.add_column("Classifications", style="yellow")
+
+            for r in rows:
+                table.add_row(r["qualified_ref"], r["shape_fingerprint"][:12], r["source"], r["classifications"])
+            console.print(table)
+            return
+
+        tools = await pipeline.catalog_repo.list_tools()
+        table = Table(title=f"Veilgate Tool Catalog ({len(tools)} tools registered)")
+        table.add_column("Qualified Reference", style="cyan", no_wrap=True)
+        table.add_column("Server", style="green")
+        table.add_column("Capabilities", style="yellow")
+        table.add_column("Risk Level", style="magenta")
+        table.add_column("Trust", style="blue")
+        table.add_column("Status", style="bold")
+        table.add_column("Tokens", style="dim", justify="right")
+
+        for t in tools:
+            risk_style = "green" if t.risk_level == "LOW" else ("red" if t.risk_level in ("HIGH", "CRITICAL") else "yellow")
+            status_style = "green" if t.status == "active" else "red"
+            trust_label = "untrusted" if t.untrusted_tool else "trusted"
+            table.add_row(
+                t.qualified_ref,
+                t.server_id,
+                ", ".join(t.capabilities) or "read",
+                f"[{risk_style}]{t.risk_level}[/{risk_style}]",
+                trust_label,
+                f"[{status_style}]{t.status}[/{status_style}]",
+                str(t.schema_tokens),
+            )
+        console.print(table)
+
+    asyncio.run(_catalog())
+
+
+@app.command()
 def run(
     config: Annotated[Path, typer.Option("--config", "-c", help="Path to policy.yaml")] = Path("./policy.yaml"),
+    from_mcp_json: Annotated[Optional[Path], typer.Option("--from-mcp-json", help="Wrap existing mcp.json directly in memory")] = None,
     dev: Annotated[bool, typer.Option("--dev", help="Enable interactive dev mode with learning")] = False,
     transport: Annotated[str, typer.Option("--transport", help="Transport mode: stdio or http")] = "stdio",
 ) -> None:
     """Start the Veilgate Gateway server."""
     settings = VeilgateSettings(policy_path=config, dev_mode=dev)
-    loader = PolicyLoader(policy_path=config)
+    loader = PolicyLoader(
+        policy_path=config if not from_mcp_json else None,
+        from_mcp_json=from_mcp_json,
+    )
 
     async def _start() -> None:
         pipeline, _ = await create_gateway_pipeline(settings, policy_loader=loader)

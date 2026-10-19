@@ -1,6 +1,6 @@
-"""3-Layer policy loading, compilation, and inheritance engine for Veilgate."""
-
+import json
 from pathlib import Path
+import re
 from typing import Any
 import yaml
 
@@ -10,6 +10,8 @@ from veilgate.config.policy_models import (
     LearnedGrant,
     TokenizeSpec,
     ToolPolicySpec,
+    Transport,
+    UpstreamSpec,
     VeilgatePolicy,
 )
 from veilgate.exceptions.types import ConfigError
@@ -57,19 +59,56 @@ def load_yaml_file(path: Path) -> dict[str, Any]:
         ) from e
 
 
+def load_mcp_json(path: Path) -> list[UpstreamSpec]:
+    """Parse client mcp.json configuration into UpstreamSpec objects."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        raise ConfigError(
+            safe_message=f"Failed to read mcp.json at '{path}': {e}",
+            details={"file": str(path)},
+        ) from e
+
+    servers = data.get("mcpServers", {})
+    upstreams: list[UpstreamSpec] = []
+    for srv_id, srv_def in servers.items():
+        if srv_id.lower() == "veilgate":
+            continue
+        clean_id = re.sub(r"[^a-z0-9]", "", srv_id.lower())
+        if not clean_id:
+            clean_id = "upstream"
+        if not clean_id[0].isalpha():
+            clean_id = "s" + clean_id
+        clean_id = clean_id[:24]
+
+        upstreams.append(
+            UpstreamSpec(
+                id=clean_id,
+                transport=Transport.STDIO,
+                command=srv_def.get("command", "python"),
+                args=srv_def.get("args", []),
+                env=srv_def.get("env", {}),
+            )
+        )
+    return upstreams
+
+
 class PolicyLoader:
     """Manages loading, validation, compilation, and live reloading of Veilgate policies."""
 
     def __init__(
         self,
-        policy_path: Path,
+        policy_path: Path | None = None,
         learned_policy_path: Path | None = None,
+        from_mcp_json: Path | None = None,
         packs_dir: Path | None = None,
     ) -> None:
-        self.policy_path: Path = policy_path
-        self.learned_policy_path: Path = learned_policy_path or (
-            policy_path.parent / "policy.learned.yaml"
+        self.policy_path: Path | None = policy_path
+        self.learned_policy_path: Path | None = learned_policy_path or (
+            policy_path.parent / "policy.learned.yaml" if policy_path else None
         )
+        self.from_mcp_json_path: Path | None = from_mcp_json
         self.packs_dir: Path = packs_dir or PACKS_DIR
         self._cached_policy: VeilgatePolicy | None = None
 
@@ -80,18 +119,28 @@ class PolicyLoader:
             Layer 1: User explicit overrides in policy.yaml
             Layer 2: Interactive grants in policy.learned.yaml
             Layer 3: Declarative rule packs in packs/*.yaml
-
-        Args:
-            force_reload: If True, bypasses in-memory policy cache.
-
-        Returns:
-            Fully compiled VeilgatePolicy instance.
         """
         if self._cached_policy is not None and not force_reload:
             return self._cached_policy
 
-        user_raw = load_yaml_file(self.policy_path)
-        learned_raw = load_yaml_file(self.learned_policy_path)
+        # Zero-file MCP JSON mode: synthesize policy from mcp.json
+        if self.from_mcp_json_path:
+            upstreams = load_mcp_json(self.from_mcp_json_path)
+            policy = VeilgatePolicy(
+                version="1",
+                extends="recommended",
+                upstreams=upstreams,
+            )
+            self._compile_flat_keywords(policy)
+            self._cached_policy = policy
+            logger.info(
+                f"SUCCESS | Policy synthesized in-memory from {self.from_mcp_json_path.name} "
+                f"with {len(policy.upstreams)} upstreams"
+            )
+            return policy
+
+        user_raw = load_yaml_file(self.policy_path) if self.policy_path else {}
+        learned_raw = load_yaml_file(self.learned_policy_path) if self.learned_policy_path else {}
 
         # Merge learned grants into user config structure
         learned_grants_data: list[dict[str, str]] = []
@@ -114,8 +163,9 @@ class PolicyLoader:
         self._compile_flat_keywords(policy)
 
         self._cached_policy = policy
+        source_name = self.policy_path.name if self.policy_path else "in-memory"
         logger.info(
-            f"SUCCESS | Policy compiled successfully from {self.policy_path.name} "
+            f"SUCCESS | Policy compiled successfully from {source_name} "
             f"with {len(policy.upstreams)} upstreams, {len(policy.tools)} tool overrides, "
             f"and {len(policy.learned_grants)} learned grants"
         )

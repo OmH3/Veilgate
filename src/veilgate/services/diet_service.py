@@ -31,8 +31,10 @@ class DietService:
         Returns:
             Tuple of (selected_tools: list[CatalogEntryRecord], is_search_mode_active: bool).
         """
-        # Full mode or below threshold: include all allowed tools
-        if self.spec.mode == DietMode.FULL or len(tools) <= self.spec.search_threshold:
+        # Full mode or auto below threshold: include all allowed tools
+        if self.spec.mode == DietMode.FULL:
+            return tools, False
+        if self.spec.mode == DietMode.AUTO and len(tools) <= self.spec.search_threshold:
             return tools, False
 
         # Search mode: return pinned tools + 1 read tool per server + promoted tools

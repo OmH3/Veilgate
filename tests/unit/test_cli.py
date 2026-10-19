@@ -86,3 +86,23 @@ def test_cli_adopt(tmp_path: Path) -> None:
     # Verify rewired mcp.json
     rewired = json.loads(mcp_json_path.read_text(encoding="utf-8"))
     assert "veilgate" in rewired["mcpServers"]
+
+
+def test_cli_catalog_and_from_mcp_json(tmp_path: Path) -> None:
+    """Verify veilgate catalog and --from-mcp-json flag."""
+    mcp_json_path = tmp_path / "test_client_mcp.json"
+    mcp_json_path.write_text(
+        json.dumps({
+            "mcpServers": {
+                "invoicedb": {
+                    "command": "python",
+                    "args": ["server.py"],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["catalog", "--from-mcp-json", str(mcp_json_path)])
+    assert result.exit_code == 0
+    assert "Veilgate Tool Catalog" in result.stdout
