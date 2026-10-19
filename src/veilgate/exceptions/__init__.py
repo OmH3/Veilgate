@@ -1,0 +1,43 @@
+"""Veilgate Exception Hierarchy."""
+
+from veilgate.exceptions.types import (
+    ApprovalDeniedError,
+    ApprovalTimeoutError,
+    ClassifierError,
+    ConfigError,
+    JevUnavailableError,
+    LowIntegrityApprovalRequiredError,
+    PolicyViolation,
+    TaintViolationError,
+    TokenNotFoundError,
+    ToolNotAllowedError,
+    ToolQuarantinedError,
+    UpstreamError,
+    UpstreamProtocolError,
+    UpstreamTimeoutError,
+    UpstreamUnavailableError,
+    VaultCryptoError,
+    VaultError,
+    VeilgateError,
+)
+
+__all__ = [
+    "ApprovalDeniedError",
+    "ApprovalTimeoutError",
+    "ClassifierError",
+    "ConfigError",
+    "JevUnavailableError",
+    "LowIntegrityApprovalRequiredError",
+    "PolicyViolation",
+    "TaintViolationError",
+    "TokenNotFoundError",
+    "ToolNotAllowedError",
+    "ToolQuarantinedError",
+    "UpstreamError",
+    "UpstreamProtocolError",
+    "UpstreamTimeoutError",
+    "UpstreamUnavailableError",
+    "VaultCryptoError",
+    "VaultError",
+    "VeilgateError",
+]

@@ -1,0 +1,97 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "veilgate"
+version = "0.1.0"
+description = "Local-First Zero-Trust MCP Privacy Firewall & Context-Diet Gateway"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+authors = [
+    { name = "Veilgate Authors" }
+]
+keywords = ["mcp", "model-context-protocol", "security", "privacy", "firewall", "llm", "ai-agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "fastmcp>=4.1.1,<5",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.10",
+    "pyyaml>=6.0",
+    "aiosqlite>=0.21",
+    "cryptography>=44",
+    "keyring>=25",
+    "phonenumbers>=9.0",
+    "tiktoken>=0.9",
+    "rank-bm25>=0.2.2",
+    "typer>=0.15",
+    "python-ulid>=3.0",
+]
+
+[project.optional-dependencies]
+presidio = [
+    "presidio-analyzer>=2.2.36",
+]
+dashboard = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "jinja2>=3.1",
+]
+dev = [
+    "pytest>=8",
+    "anyio>=4",
+    "hypothesis>=6",
+    "faker>=30",
+    "pytest-cov",
+    "pytest-benchmark",
+    "ruff",
+    "mypy",
+    "pyinstrument",
+]
+
+[project.scripts]
+veilgate = "veilgate.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/veilgate"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fastmcp.*",
+    "rank_bm25.*",
+    "phonenumbers.*",
+    "presidio_analyzer.*",
+    "keyring.*",
+    "ulid.*",
+]
+ignore_missing_imports = true

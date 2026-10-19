@@ -1,0 +1,35 @@
+version: "1"
+name: "core-verbs"
+description: "Universal capability derivation rules mapping tool name stems to standard capabilities"
+
+rules:
+  - capability: "read"
+    patterns:
+      - "^(get|list|read|fetch|search|find|describe|view|query|inspect|show|load|scan|peek)_"
+      - "_(get|list|read|fetch|search|find|describe|view|query|inspect|show|load|scan|peek)$"
+      - "^(get|list|read|fetch|search|find|describe|view|query|inspect|show|load|scan|peek)$"
+    risk_level: "LOW"
+
+  - capability: "write"
+    patterns:
+      - "^(create|add|insert|update|set|modify|edit|patch|write|append|save|put)_"
+      - "_(create|add|insert|update|set|modify|edit|patch|write|append|save|put)$"
+    risk_level: "MEDIUM"
+
+  - capability: "delete"
+    patterns:
+      - "^(delete|remove|drop|purge|clear|truncate|destroy|erase|unlink)_"
+      - "_(delete|remove|drop|purge|clear|truncate|destroy|erase|unlink)$"
+    risk_level: "HIGH"
+
+  - capability: "external_egress"
+    patterns:
+      - "^(send|post|publish|broadcast|dispatch|notify|emit|upload|forward)_"
+      - "_(send|post|publish|broadcast|dispatch|notify|emit|upload|forward)$"
+    risk_level: "HIGH"
+
+  - capability: "exec"
+    patterns:
+      - "^(exec|run|eval|execute|shell|cmd|bash|script|invoke)_"
+      - "_(exec|run|eval|execute|shell|cmd|bash|script|invoke)$"
+    risk_level: "CRITICAL"

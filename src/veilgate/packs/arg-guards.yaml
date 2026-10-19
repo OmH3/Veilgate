@@ -1,0 +1,31 @@
+version: "1"
+name: "arg-guards"
+description: "Universal argument guard definitions preventing token exfiltration and injection"
+
+guards:
+  - arg_names:
+      - "to"
+      - "recipient"
+      - "recipients"
+      - "email"
+      - "mail_to"
+      - "destination"
+    allowed_token_types: ["EMAIL"]
+    disallow_embedded_tokens: true
+
+  - arg_names:
+      - "body"
+      - "message"
+      - "content"
+      - "text"
+      - "prompt"
+      - "query"
+      - "search"
+      - "url"
+      - "endpoint"
+      - "command"
+      - "cmd"
+      - "script"
+      - "sql"
+    allowed_token_types: []
+    disallow_embedded_tokens: true

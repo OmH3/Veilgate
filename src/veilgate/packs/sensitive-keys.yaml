@@ -1,0 +1,64 @@
+version: "1"
+name: "sensitive-keys"
+description: "Universal key stem matchers for dictionary keys indicating sensitive values"
+
+rules:
+  - stems:
+      - "ssn"
+      - "social_security"
+      - "national_id"
+    token_type: "SSN"
+    sensitivity: "PII_HIGH"
+    action: "TOKENIZE"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - stems:
+      - "routing_number"
+      - "bank_routing"
+      - "routing"
+      - "sort_code"
+      - "aba_routing"
+    token_type: "BANK_ROUTING"
+    sensitivity: "PII_HIGH"
+    action: "TOKENIZE"
+    allowed_sinks: "trusted_read"
+    allow_external_egress: false
+
+  - stems:
+      - "account_number"
+      - "bank_account"
+      - "iban"
+    token_type: "BANK_ACCOUNT"
+    sensitivity: "PII_HIGH"
+    action: "TOKENIZE"
+    allowed_sinks: "trusted_read"
+    allow_external_egress: false
+
+  - stems:
+      - "api_key"
+      - "apikey"
+      - "auth_token"
+      - "access_token"
+      - "secret_key"
+      - "client_secret"
+      - "private_key"
+      - "password"
+      - "passwd"
+      - "bearer_token"
+    token_type: "API_KEY"
+    sensitivity: "SECRET"
+    action: "TOKENIZE"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - stems:
+      - "email"
+      - "email_address"
+      - "contact_email"
+    token_type: "EMAIL"
+    sensitivity: "PII_MEDIUM"
+    action: "TOKENIZE"
+    format_preserving: true
+    allowed_sinks: "trusted_read"
+    allow_external_egress: true
