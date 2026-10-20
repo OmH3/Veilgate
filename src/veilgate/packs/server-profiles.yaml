@@ -3,12 +3,12 @@ name: "server-profiles"
 description: "Inferred trust and capability profiles for standard MCP server categories"
 
 rules:
-  - match_server_id: "^(fetch|web|browser|playwright|puppeteer|curl|scrape|crawler|google|bing|search|twitter|slack|email|mailer|smtp|webhook)"
+  - match_server_id: "(fetch|web|browser|playwright|puppeteer|curl|scrape|crawler|google|bing|search|twitter|slack|email|mailer|smtp|webhook)"
     trust: "untrusted"
     default_capabilities: ["external_egress"]
     risk_level: "HIGH"
 
-  - match_command: "(uvx\\s+mcp-server-fetch|npx\\s+@puppeteer/mcp|npx\\s+@playwright/mcp|curl|wget)"
+  - match_command: "(mcp-server-fetch|@puppeteer/mcp|@playwright/mcp|curl|wget)"
     trust: "untrusted"
     default_capabilities: ["external_egress"]
     risk_level: "HIGH"

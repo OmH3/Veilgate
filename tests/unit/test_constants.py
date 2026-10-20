@@ -1,13 +1,12 @@
 """Unit tests for Veilgate constants and regex specifications."""
 
-import re
 
 from veilgate.config.constants import (
     CROCKFORD_BASE32_ALPHABET,
     EMAIL_TOKEN_REGEX,
-    ReasonCode,
     TOKEN_REGEX,
     URL_TOKEN_REGEX,
+    ReasonCode,
 )
 
 

@@ -9,7 +9,6 @@ from veilgate.config.policy_models import (
     FieldRuleSpec,
     SinkMacro,
     TokenizeSpec,
-    ToolPolicySpec,
     Transport,
     TrustLevel,
     UnlistedSinkPolicy,

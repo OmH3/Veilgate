@@ -1,12 +1,16 @@
 """FastMCP gateway server factory and lifecycle assembler."""
 
-from pathlib import Path
 from fastmcp import FastMCP
 
 from veilgate.config.policy_loader import PolicyLoader
 from veilgate.config.policy_models import VeilgatePolicy
 from veilgate.config.settings import VeilgateSettings
-from veilgate.middleware.context_middleware import VeilgateContextMiddleware
+from veilgate.middleware import (
+    ContextMiddleware,
+    DiscoveryMiddleware,
+    FirewallCallMiddleware,
+    InitMiddleware,
+)
 from veilgate.pipeline import FirewallPipeline
 from veilgate.repositories.approval_repo import ApprovalRepository
 from veilgate.repositories.audit_repo import AuditRepository
@@ -20,8 +24,9 @@ from veilgate.services.acl_service import AclService
 from veilgate.services.approval_service import ApprovalService
 from veilgate.services.audit_service import AuditService
 from veilgate.services.catalog_service import CatalogService
+from veilgate.services.compaction_service import CompactionService
 from veilgate.services.diet_service import DietService
-from veilgate.services.explain_service import ExplainService
+from veilgate.services.injection_service import InjectionService
 from veilgate.services.minimizer_service import MinimizerService
 from veilgate.services.taint_service import TaintService
 from veilgate.services.tokenizer_service import TokenizerService
@@ -52,6 +57,8 @@ async def create_gateway_pipeline(
         learned_policy_path=settings.learned_policy_path,
     )
     resolved_policy = policy or loader.load()
+    if not resolved_policy.loaded_detectors:
+        loader._load_packs(resolved_policy)
 
     # 4. Repositories
     session_repo = SessionRepository(db_manager)
@@ -62,11 +69,19 @@ async def create_gateway_pipeline(
     stash_repo = StashRepository(db_manager)
 
     # 5. Services
+    injection_service = InjectionService()
+    compaction_service = CompactionService(resolved_policy.compaction)
     acl_service = AclService(resolved_policy)
-    catalog_service = CatalogService(catalog_repo, resolved_policy)
+    catalog_service = CatalogService(catalog_repo, resolved_policy, injection_service=injection_service)
     taint_service = TaintService(vault_repo, resolved_policy)
     tokenizer_service = TokenizerService(vault_repo)
-    minimizer_service = MinimizerService(tokenizer_service, stash_repo, resolved_policy)
+    minimizer_service = MinimizerService(
+        tokenizer_service,
+        stash_repo,
+        resolved_policy,
+        compaction_service=compaction_service,
+        injection_service=injection_service,
+    )
     diet_service = DietService(resolved_policy.diet)
     approval_service = ApprovalService(
         approval_repo=approval_repo,
@@ -102,8 +117,15 @@ def create_gateway_server(
     settings: VeilgateSettings,
     pipeline: FirewallPipeline,
 ) -> FastMCP:
-    """Create FastMCP server configured with VeilgateContextMiddleware."""
+    """Create FastMCP server configured with the 4-layer Veilgate middleware stack."""
     server = FastMCP(name="Veilgate")
-    middleware = VeilgateContextMiddleware(pipeline)
-    server.add_middleware(middleware)
+    context_mw = ContextMiddleware()
+    init_mw = InitMiddleware()
+    discovery_mw = DiscoveryMiddleware(pipeline, context_mw.session_ctx)
+    firewall_call_mw = FirewallCallMiddleware(pipeline, context_mw.session_ctx)
+
+    server.add_middleware(context_mw)
+    server.add_middleware(init_mw)
+    server.add_middleware(discovery_mw)
+    server.add_middleware(firewall_call_mw)
     return server

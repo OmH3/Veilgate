@@ -1,6 +1,5 @@
 """FastMCP Middleware adapter connecting the MCP transport to FirewallPipeline."""
 
-from typing import Any
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool, ToolResult
 from mcp.types import TextContent
@@ -8,7 +7,7 @@ from ulid import ULID
 
 from veilgate.config.constants import ReasonCode
 from veilgate.config.policy_models import Transport
-from veilgate.exceptions.types import PolicyViolation, UpstreamError, VeilgateError
+from veilgate.exceptions.types import PolicyViolation, UpstreamError
 from veilgate.pipeline import FirewallPipeline
 from veilgate.services.models import SessionContext
 from veilgate.utils.logging_utils import setup_logger

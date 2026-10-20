@@ -1,8 +1,7 @@
 """Vault repository managing encrypted token storage and deterministic resolution."""
 
-from datetime import datetime, timedelta, timezone
 import json
-from typing import Mapping
+from datetime import UTC, datetime, timedelta
 
 from veilgate.config.constants import TABLE_TOKENS
 from veilgate.exceptions.types import TokenNotFoundError, VaultCryptoError
@@ -17,6 +16,8 @@ class VaultRepository:
     def __init__(self, db_manager: DatabaseManager, crypto: VaultCrypto) -> None:
         self.db: DatabaseManager = db_manager
         self.crypto: VaultCrypto = crypto
+        self._cache: dict[tuple[str, str, str], TokenRecord] = {}
+        self._rendered_cache: dict[tuple[str, str], TokenRecord] = {}
 
     async def get_or_create(self, spec: TokenRecordCreate) -> TokenRecord:
         """Retrieve existing token or mint and encrypt a new one idempotently.
@@ -26,7 +27,11 @@ class VaultRepository:
         the previously minted token is reused.
         """
         value_hmac = self.crypto.compute_hmac(spec.raw_value)
-        now = datetime.now(timezone.utc)
+        cache_key = (spec.session_id, spec.token_type, value_hmac)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        now = datetime.now(UTC)
         expires_at = (now + timedelta(seconds=spec.ttl_seconds)).isoformat()
         now_iso = now.isoformat()
 
@@ -48,7 +53,10 @@ class VaultRepository:
             )
             row = await cursor.fetchone()
             if row is not None:
-                return TokenRecord.model_validate(dict(row))
+                record = TokenRecord.model_validate(dict(row))
+                self._cache[cache_key] = record
+                self._rendered_cache[(record.session_id, record.rendered)] = record
+                return record
 
             # 2. Encrypt value
             ciphertext, nonce = self.crypto.encrypt(spec.raw_value)
@@ -87,6 +95,8 @@ class VaultRepository:
         created = await self.get_by_token(spec.token_id, spec.session_id)
         if created is None:
             raise VaultCryptoError(f"Failed to persist token {spec.token_id}")
+        self._cache[cache_key] = created
+        self._rendered_cache[(created.session_id, created.rendered)] = created
         return created
 
     async def get_by_token(self, token_id: str, session_id: str) -> TokenRecord | None:
@@ -99,10 +109,16 @@ class VaultRepository:
             row = await cursor.fetchone()
             if row is None:
                 return None
-            return TokenRecord.model_validate(dict(row))
+            record = TokenRecord.model_validate(dict(row))
+            self._rendered_cache[(session_id, record.rendered)] = record
+            return record
 
     async def get_by_rendered(self, rendered: str, session_id: str) -> TokenRecord | None:
         """Find a token by its rendered representation scoped to session_id."""
+        cache_key = (session_id, rendered)
+        if cache_key in self._rendered_cache:
+            return self._rendered_cache[cache_key]
+
         async with self.db.connection() as conn:
             cursor = await conn.execute(
                 f"SELECT * FROM {TABLE_TOKENS} WHERE session_id = ? AND rendered = ?;",
@@ -111,7 +127,9 @@ class VaultRepository:
             row = await cursor.fetchone()
             if row is None:
                 return None
-            return TokenRecord.model_validate(dict(row))
+            record = TokenRecord.model_validate(dict(row))
+            self._rendered_cache[cache_key] = record
+            return record
 
     async def reveal(self, record: TokenRecord) -> str:
         """Decrypt token ciphertext from vault in memory only."""
@@ -130,7 +148,7 @@ class VaultRepository:
 
     async def purge_expired(self) -> int:
         """Delete tokens where expires_at has elapsed."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             cursor = await conn.execute(
                 f"DELETE FROM {TABLE_TOKENS} WHERE expires_at < ?;",

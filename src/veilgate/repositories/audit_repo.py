@@ -1,9 +1,7 @@
 """Tamper-evident append-only audit trail repository with cryptographic hash chaining."""
 
-from datetime import datetime, timezone
 import hashlib
-from typing import Tuple
-import aiosqlite
+from datetime import UTC, datetime
 
 from veilgate.config.constants import TABLE_AUDIT_EVENTS
 from veilgate.repositories.db import DatabaseManager
@@ -43,6 +41,7 @@ class AuditRepository:
 
     def __init__(self, db_manager: DatabaseManager) -> None:
         self.db: DatabaseManager = db_manager
+        self._last_row_hash: str | None = None
 
     async def record(
         self,
@@ -56,15 +55,18 @@ class AuditRepository:
         ts: str | None = None,
     ) -> AuditEventRecord:
         """Insert an immutable audit event with computed cryptographic hash link."""
-        event_ts = ts or datetime.now(timezone.utc).isoformat()
+        event_ts = ts or datetime.now(UTC).isoformat()
 
         async with self.db.connection() as conn:
-            # 1. Fetch hash of latest committed row
-            cursor = await conn.execute(
-                f"SELECT row_hash FROM {TABLE_AUDIT_EVENTS} ORDER BY seq DESC LIMIT 1;"
-            )
-            row = await cursor.fetchone()
-            prev_hash = row["row_hash"] if row is not None else ("0" * 64)
+            # 1. Fetch hash of latest committed row if not cached
+            if self._last_row_hash is None:
+                cursor = await conn.execute(
+                    f"SELECT row_hash FROM {TABLE_AUDIT_EVENTS} ORDER BY seq DESC LIMIT 1;"
+                )
+                row = await cursor.fetchone()
+                prev_hash = row["row_hash"] if row is not None else ("0" * 64)
+            else:
+                prev_hash = self._last_row_hash
 
             # 2. Compute current row hash
             row_hash = compute_row_hash(
@@ -80,7 +82,7 @@ class AuditRepository:
             )
 
             # 3. Insert row
-            await conn.execute(
+            ins_cur = await conn.execute(
                 f"""
                 INSERT INTO {TABLE_AUDIT_EVENTS} (
                     event_id, ts, session_id, correlation_id, kind,
@@ -101,17 +103,22 @@ class AuditRepository:
                 ),
             )
             await conn.commit()
+            self._last_row_hash = row_hash
+            seq_id = int(ins_cur.lastrowid or 1)
 
-            # Retrieve inserted record with assigned seq
-            cur = await conn.execute(
-                f"SELECT * FROM {TABLE_AUDIT_EVENTS} WHERE event_id = ?;",
-                (event_id,),
+            return AuditEventRecord(
+                seq=seq_id,
+                event_id=event_id,
+                ts=event_ts,
+                session_id=session_id,
+                correlation_id=correlation_id,
+                kind=kind,
+                qualified_ref=qualified_ref,
+                reason=reason,
+                details_json=details_json,
+                prev_hash=prev_hash,
+                row_hash=row_hash,
             )
-            inserted_row = await cur.fetchone()
-            if inserted_row is None:
-                raise RuntimeError(f"Failed to record audit event {event_id}")
-
-            return AuditEventRecord.model_validate(dict(inserted_row))
 
     async def list_events(
         self,
@@ -143,7 +150,7 @@ class AuditRepository:
             rows = await cursor.fetchall()
             return [AuditEventRecord.model_validate(dict(r)) for r in rows]
 
-    async def verify_chain(self) -> Tuple[bool, str | None]:
+    async def verify_chain(self) -> tuple[bool, str | None]:
         """Verify the cryptographic integrity of the entire audit chain.
 
         Returns:

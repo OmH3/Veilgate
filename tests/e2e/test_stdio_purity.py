@@ -8,11 +8,10 @@ Asserts that when the Veilgate Gateway server runs in standard stdio mode:
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
-import time
-import pytest
+from pathlib import Path
+
 import yaml
 
 

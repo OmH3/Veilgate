@@ -1,7 +1,6 @@
 """Repository for human-in-the-loop approval workflows."""
 
-from datetime import datetime, timezone
-import aiosqlite
+from datetime import UTC, datetime
 
 from veilgate.config.constants import TABLE_APPROVALS
 from veilgate.repositories.db import DatabaseManager
@@ -23,7 +22,7 @@ class ApprovalRepository:
         reason: str,
     ) -> ApprovalRecord:
         """Create a new pending approval record."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""
@@ -61,7 +60,7 @@ class ApprovalRepository:
         learned_grant: str | None = None,
     ) -> None:
         """Record decision ('APPROVED', 'APPROVED_AND_SAVED', 'DENIED', 'EXPIRED')."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""

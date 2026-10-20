@@ -1,14 +1,16 @@
 """Central FirewallPipeline orchestrating discovery, access control, taint, and egress minimization."""
 
+import json
 import time
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
 from ulid import ULID
 
 from veilgate.config.constants import ReasonCode
 from veilgate.exceptions.types import (
     ApprovalDeniedError,
     ApprovalTimeoutError,
-    PolicyViolation,
     TaintViolationError,
     ToolNotAllowedError,
     ToolQuarantinedError,
@@ -16,6 +18,7 @@ from veilgate.exceptions.types import (
 from veilgate.repositories.catalog_repo import CatalogRepository
 from veilgate.repositories.session_repo import SessionRepository
 from veilgate.repositories.stash_repo import StashRepository
+from veilgate.repositories.vault_repo import VaultRepository
 from veilgate.services.acl_service import AclService
 from veilgate.services.approval_service import ApprovalService
 from veilgate.services.audit_service import AuditService
@@ -28,6 +31,7 @@ from veilgate.services.models import (
     ToolRef,
 )
 from veilgate.services.taint_service import TaintService
+from veilgate.services.tokenizer_service import TokenizerService
 from veilgate.services.upstream_registry import UpstreamRegistry
 from veilgate.utils.logging_utils import setup_logger
 
@@ -62,13 +66,19 @@ class FirewallPipeline:
         self.approvals: ApprovalService = approval_service
         self.audit: AuditService = audit_service
         self.upstreams: UpstreamRegistry = upstream_registry
+        self.vault: VaultRepository = taint_service.vault_repo
+        self.tokenizer: TokenizerService = minimizer_service.tokenizer
+        self._known_sessions: set[str] = set()
+        self._last_list_audit_state: dict[str, tuple[int, bool]] = {}
 
     async def on_list_tools(
         self, session: SessionContext
     ) -> list[dict[str, Any]]:
         """Orchestrate tool discovery: ingest upstreams, enforce ACL, and compact catalog."""
         # Ensure session record exists
-        await self.sessions.create_or_touch(session.session_id, transport=session.transport.value)
+        if session.session_id not in self._known_sessions:
+            await self.sessions.create_or_touch(session.session_id, transport=session.transport.value)
+            self._known_sessions.add(session.session_id)
 
         # 1. Ingest tools from configured upstreams
         for upstream in self.upstreams.policy.upstreams:
@@ -119,13 +129,16 @@ class FirewallPipeline:
                 },
             })
 
-        # 6. Audit discovery
-        await self.audit.record(
-            kind="LIST",
-            session=session,
-            reason=ReasonCode.OK,
-            details={"tools_count": len(compacted), "search_active": is_search_active},
-        )
+        # 6. Audit discovery (deduplicate identical back-to-back LIST state per session)
+        list_state = (len(compacted), is_search_active)
+        if self._last_list_audit_state.get(session.session_id) != list_state:
+            self._last_list_audit_state[session.session_id] = list_state
+            await self.audit.record(
+                kind="LIST",
+                session=session,
+                reason=ReasonCode.OK,
+                details={"tools_count": len(compacted), "search_active": is_search_active},
+            )
 
         return compacted
 
@@ -139,9 +152,15 @@ class FirewallPipeline:
         start_time = time.perf_counter()
         call_event_id = str(ULID())
         args_dict = dict(arguments)
+        logger.info(f"STARTED | step=on_call_tool | session={session.session_id} | tool={tool_name}")
+        logger.info(
+            f"INPUT | step=on_call_tool | {json.dumps({'tool': tool_name, 'args': args_dict}, default=str, ensure_ascii=False)}"
+        )
 
         # Ensure session record exists
-        await self.sessions.create_or_touch(session.session_id, transport=session.transport.value)
+        if session.session_id not in self._known_sessions:
+            await self.sessions.create_or_touch(session.session_id, transport=session.transport.value)
+            self._known_sessions.add(session.session_id)
 
         # Handle Gateway Meta-Tools
         if tool_name == "veilgate_search_tools":
@@ -255,6 +274,10 @@ class FirewallPipeline:
                 "transforms_count": len(minimized.transforms),
             },
         )
+        logger.info(
+            f"OUTPUT | step=on_call_tool | {json.dumps({'tool': ref.qualified, 'tokens_before': minimized.tokens_before, 'tokens_after': minimized.tokens_after, 'transforms': len(minimized.transforms)}, ensure_ascii=False)}"
+        )
+        logger.info(f"SUCCESS | step=on_call_tool | session={session.session_id} | tool={ref.qualified}")
 
         return minimized
 

@@ -3,12 +3,11 @@
 import base64
 import os
 from pathlib import Path
-from typing import Tuple
 
+import keyring
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-import keyring
 
 from veilgate.config.constants import CROCKFORD_BASE32_ALPHABET
 from veilgate.exceptions.types import VaultCryptoError
@@ -105,7 +104,7 @@ class VaultCrypto:
 
         self._aesgcm: AESGCM = AESGCM(self._enc_key)
 
-    def encrypt(self, plaintext: str) -> Tuple[bytes, bytes]:
+    def encrypt(self, plaintext: str) -> tuple[bytes, bytes]:
         """Encrypt plaintext with AES-256-GCM.
 
         Args:

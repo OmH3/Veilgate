@@ -1,14 +1,14 @@
 """Taint tracking service enforcing sink policies, arg guards, and argument rehydration."""
 
 import fnmatch
+import json
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from veilgate.config.constants import (
-    EMAIL_TOKEN_REGEX,
+    SYNTHETIC_INT_BASE,
     ReasonCode,
-    TOKEN_REGEX,
-    URL_TOKEN_REGEX,
 )
 from veilgate.config.policy_models import (
     Capability,
@@ -17,6 +17,7 @@ from veilgate.config.policy_models import (
     UnlistedSinkPolicy,
     VeilgatePolicy,
 )
+from veilgate.engines.operators import evaluate_operator
 from veilgate.repositories.models import CatalogEntryRecord, TokenRecord
 from veilgate.repositories.vault_repo import VaultRepository
 from veilgate.services.models import (
@@ -27,8 +28,20 @@ from veilgate.services.models import (
     ToolRef,
 )
 from veilgate.utils.logging_utils import setup_logger
+from veilgate.utils.text_scan import detect_smuggled_tokens
 
 logger = setup_logger("veilgate.services.taint_service")
+
+
+_RAW_EGRESS_GUARD_TYPES: set[str] = {
+    "SSN",
+    "CREDIT_CARD",
+    "PAN",
+    "AADHAAR",
+    "AWS_KEY",
+    "GITHUB_TOKEN",
+    "API_KEY",
+}
 
 
 class TaintService:
@@ -37,6 +50,14 @@ class TaintService:
     def __init__(self, vault_repo: VaultRepository, policy: VeilgatePolicy) -> None:
         self.vault_repo: VaultRepository = vault_repo
         self.policy: VeilgatePolicy = policy
+        self._raw_egress_detectors: list[tuple[re.Pattern[str], Any]] = [
+            (
+                re.compile(rf"(?<!\w)(?:{d.pattern.lstrip('^').rstrip('$')})(?!\w)"),
+                d,
+            )
+            for d in self.policy.loaded_detectors
+            if d.token_type.upper() in _RAW_EGRESS_GUARD_TYPES and not d.allow_external_egress
+        ]
 
     def scan_args_for_tokens(
         self, args: Mapping[str, Any], path_prefix: str = "$"
@@ -55,21 +76,39 @@ class TaintService:
                         findings.extend(self.scan_args_for_tokens(item, item_path))
                     elif isinstance(item, str):
                         findings.extend(self._scan_string(item, item_path))
+                    elif isinstance(item, int) and not isinstance(item, bool):
+                        if SYNTHETIC_INT_BASE <= item < SYNTHETIC_INT_BASE + 100_000_000:
+                            findings.append(
+                                TokenFinding(
+                                    rendered=str(item),
+                                    token_id=str(item),
+                                    token_type="INTEGER",
+                                    arg_path=item_path,
+                                    is_standalone_scalar=True,
+                                )
+                            )
             elif isinstance(value, str):
                 findings.extend(self._scan_string(value, current_path))
+            elif isinstance(value, int) and not isinstance(value, bool):
+                if SYNTHETIC_INT_BASE <= value < SYNTHETIC_INT_BASE + 100_000_000:
+                    findings.append(
+                        TokenFinding(
+                            rendered=str(value),
+                            token_id=str(value),
+                            token_type="INTEGER",
+                            arg_path=current_path,
+                            is_standalone_scalar=True,
+                        )
+                    )
 
         return findings
 
     def _scan_string(self, text: str, arg_path: str) -> list[TokenFinding]:
-        """Extract token frames from a string value."""
+        """Extract token frames from a string value with multi-layer smuggling detection."""
         findings: list[TokenFinding] = []
+        raw_findings, is_smuggled = detect_smuggled_tokens(text)
 
-        # 1. Standard token pattern <vg:TYPE:TOKEN_ID>
-        for match in TOKEN_REGEX.finditer(text):
-            rendered = match.group(0)
-            token_type = match.group(1)
-            token_id = match.group(2)
-            is_standalone = (text.strip() == rendered)
+        for rendered, token_id, token_type, is_standalone in raw_findings:
             findings.append(
                 TokenFinding(
                     rendered=rendered,
@@ -77,40 +116,50 @@ class TaintService:
                     token_type=token_type,
                     arg_path=arg_path,
                     is_standalone_scalar=is_standalone,
-                )
-            )
-
-        # 2. Email token pattern vg-[base32]@vault.veilgate.invalid
-        for match in EMAIL_TOKEN_REGEX.finditer(text):
-            rendered = match.group(0)
-            token_id = match.group(1).upper()
-            is_standalone = (text.strip().lower() == rendered.lower())
-            findings.append(
-                TokenFinding(
-                    rendered=rendered,
-                    token_id=token_id,
-                    token_type="EMAIL",
-                    arg_path=arg_path,
-                    is_standalone_scalar=is_standalone,
-                )
-            )
-
-        # 3. URL token pattern https://vault.veilgate.invalid/t/[base32]
-        for match in URL_TOKEN_REGEX.finditer(text):
-            rendered = match.group(0)
-            token_id = match.group(1).upper()
-            is_standalone = (text.strip().lower() == rendered.lower())
-            findings.append(
-                TokenFinding(
-                    rendered=rendered,
-                    token_id=token_id,
-                    token_type="URL",
-                    arg_path=arg_path,
-                    is_standalone_scalar=is_standalone,
+                    is_smuggled=is_smuggled,
                 )
             )
 
         return findings
+
+    def _scan_args_for_raw_pii(
+        self, args: Mapping[str, Any], path_prefix: str = "$"
+    ) -> list[TokenFinding]:
+        """Scan arguments for raw un-tokenized PII/secrets before external egress."""
+        raw_findings: list[TokenFinding] = []
+        for key, value in args.items():
+            current_path = f"{path_prefix}.{key}"
+            if isinstance(value, dict):
+                raw_findings.extend(self._scan_args_for_raw_pii(value, current_path))
+            elif isinstance(value, list):
+                for idx, item in enumerate(value):
+                    item_path = f"{current_path}[{idx}]"
+                    if isinstance(item, dict):
+                        raw_findings.extend(self._scan_args_for_raw_pii(item, item_path))
+                    elif isinstance(item, str):
+                        raw_findings.extend(self._scan_raw_string(item, item_path))
+            elif isinstance(value, str):
+                raw_findings.extend(self._scan_raw_string(value, current_path))
+        return raw_findings
+
+    def _scan_raw_string(self, text: str, arg_path: str) -> list[TokenFinding]:
+        """Check string for raw un-tokenized high-sensitivity secrets/PII."""
+        results: list[TokenFinding] = []
+        for inline_re, detector in self._raw_egress_detectors:
+            for m in inline_re.finditer(text):
+                candidate = m.group(0)
+                if detector.validator and not evaluate_operator(detector.validator, candidate):
+                    continue
+                results.append(
+                    TokenFinding(
+                        rendered="[REDACTED_RAW_PII]",
+                        token_id=f"RAW_{detector.token_type.upper()}",
+                        token_type=detector.token_type.upper(),
+                        arg_path=arg_path,
+                        is_standalone_scalar=(candidate == text.strip()),
+                    )
+                )
+        return results
 
     async def inspect(
         self,
@@ -120,12 +169,27 @@ class TaintService:
         catalog_entry: CatalogEntryRecord | None = None,
     ) -> TaintPlan:
         """Inspect arguments against policy and return taint plan."""
-        findings = self.scan_args_for_tokens(args)
-        if not findings:
-            return TaintPlan(verdicts=[])
+        tool_policy = next((t for t in self.policy.tools if fnmatch.fnmatch(ref.qualified.lower(), t.match.lower())), None)
+        is_external_or_untrusted = bool(
+            (catalog_entry and (Capability.EXTERNAL_EGRESS.value in catalog_entry.capabilities or catalog_entry.untrusted_tool))
+            or (tool_policy and tool_policy.capabilities and Capability.EXTERNAL_EGRESS in tool_policy.capabilities)
+        )
 
         verdicts: list[TaintVerdict] = []
-        tool_policy = next((t for t in self.policy.tools if fnmatch.fnmatch(ref.qualified.lower(), t.match.lower())), None)
+        if is_external_or_untrusted and self._raw_egress_detectors:
+            for raw_finding in self._scan_args_for_raw_pii(args):
+                verdicts.append(
+                    TaintVerdict(
+                        finding=raw_finding,
+                        decision="BLOCK",
+                        reason=ReasonCode.TAINT_EGRESS_FORBIDDEN,
+                        matched_layer=PolicyLayer.PACK,
+                    )
+                )
+
+        findings = self.scan_args_for_tokens(args)
+        if not findings:
+            return TaintPlan(verdicts=verdicts)
 
         for finding in findings:
             # Resolve token from vault for this session
@@ -145,6 +209,18 @@ class TaintService:
                 )
                 continue
 
+            # 0. Check encoded smuggling (Attack A6 defense)
+            if finding.is_smuggled:
+                verdicts.append(
+                    TaintVerdict(
+                        finding=finding,
+                        decision="BLOCK",
+                        reason=ReasonCode.TOKEN_ENCODED_SMUGGLING,
+                        matched_layer=PolicyLayer.PACK,
+                    )
+                )
+                continue
+
             finding.record = record
 
             # 1. Blocked token types check
@@ -160,8 +236,8 @@ class TaintService:
                 continue
 
             # 2. Arg guards check: prevent embedding sensitive tokens into templates or open parameters
-            arg_name = finding.arg_path.split(".")[-1].split("[")[0]
-            if tool_policy and arg_name in tool_policy.arg_guards:
+            arg_name = finding.arg_path.split(".")[-1].split("[")[0].lower()
+            if tool_policy and arg_name in [g.lower() for g in tool_policy.arg_guards]:
                 if not finding.is_standalone_scalar:
                     verdicts.append(
                         TaintVerdict(
@@ -173,11 +249,39 @@ class TaintService:
                     )
                     continue
 
+            # Check declarative arg-guards pack
+            arg_guard_blocked = False
+            for ag in self.policy.loaded_arg_guards:
+                if arg_name in [n.lower() for n in ag.arg_names]:
+                    if ag.disallow_embedded_tokens and not finding.is_standalone_scalar:
+                        verdicts.append(
+                            TaintVerdict(
+                                finding=finding,
+                                decision="BLOCK",
+                                reason=ReasonCode.TAINT_ARG_GUARD_BLOCKED,
+                                matched_layer=PolicyLayer.PACK,
+                            )
+                        )
+                        arg_guard_blocked = True
+                        break
+                    if ag.allowed_token_types and finding.token_type not in ag.allowed_token_types:
+                        verdicts.append(
+                            TaintVerdict(
+                                finding=finding,
+                                decision="BLOCK",
+                                reason=ReasonCode.TAINT_ARG_GUARD_BLOCKED,
+                                matched_layer=PolicyLayer.PACK,
+                            )
+                        )
+                        arg_guard_blocked = True
+                        break
+
+            if arg_guard_blocked:
+                continue
+
             # 3. Egress boundary check (Confused Deputy defense)
             is_external_egress = False
-            if catalog_entry and Capability.EXTERNAL_EGRESS.value in catalog_entry.capabilities:
-                is_external_egress = True
-            elif tool_policy and tool_policy.capabilities and Capability.EXTERNAL_EGRESS in tool_policy.capabilities:
+            if catalog_entry and Capability.EXTERNAL_EGRESS.value in catalog_entry.capabilities or tool_policy and tool_policy.capabilities and Capability.EXTERNAL_EGRESS in tool_policy.capabilities:
                 is_external_egress = True
 
             if is_external_egress and not record.allow_external_egress:
@@ -192,7 +296,7 @@ class TaintService:
                 continue
 
             # 4. Sink macro & pattern authorization check
-            is_sink_allowed = self._check_sink_allowed(ref, record, catalog_entry)
+            is_sink_allowed = self._check_sink_allowed(ref, record, catalog_entry, finding.arg_path)
             if is_sink_allowed:
                 verdicts.append(
                     TaintVerdict(
@@ -230,10 +334,12 @@ class TaintService:
         target_ref: ToolRef,
         record: TokenRecord,
         catalog_entry: CatalogEntryRecord | None,
+        arg_path: str = "",
     ) -> bool:
         """Evaluate if target tool matches token allowed_sinks patterns or capability macros."""
         sinks = record.allowed_sinks_json
         target_qualified = target_ref.qualified
+        target_arg = arg_path.split(".")[-1].split("[")[0].lower() if arg_path else ""
 
         # Handle SinkMacro
         if sinks == SinkMacro.NONE.value:
@@ -252,21 +358,27 @@ class TaintService:
                 return Capability.READ.value in catalog_entry.capabilities
             return target_ref.server == origin_server
 
+        def matches_pattern_and_slot(pattern_spec: str) -> bool:
+            if ":" in pattern_spec:
+                base_pat, required_slot = pattern_spec.split(":", 1)
+                if not fnmatch.fnmatch(target_qualified.lower(), base_pat.lower()):
+                    return False
+                if target_arg and target_arg != required_slot.lower():
+                    return False
+                return True
+            return fnmatch.fnmatch(target_qualified.lower(), pattern_spec.lower())
+
         # Handle list of patterns or single glob pattern
         if sinks.startswith("["):
-            import json
             try:
                 allowed_list: list[str] = json.loads(sinks)
                 for pattern in allowed_list:
-                    # Strip slot specifier (e.g., 'invoicedb.compare_*:account' -> 'invoicedb.compare_*')
-                    base_pattern = pattern.split(":")[0]
-                    if fnmatch.fnmatch(target_qualified.lower(), base_pattern.lower()):
+                    if matches_pattern_and_slot(pattern):
                         return True
-            except Exception:
-                pass
+            except json.JSONDecodeError as e:
+                logger.exception(f"ERROR | {type(e).__name__}: {e}")
         else:
-            base_pattern = sinks.split(":")[0]
-            if fnmatch.fnmatch(target_qualified.lower(), base_pattern.lower()):
+            if matches_pattern_and_slot(sinks):
                 return True
 
         return False

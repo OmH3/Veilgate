@@ -1,8 +1,9 @@
 """Asynchronous SQLite connection and migration manager for Veilgate."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
+
 import aiosqlite
 
 from veilgate.utils.logging_utils import setup_logger

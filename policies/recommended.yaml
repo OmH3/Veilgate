@@ -1,0 +1,31 @@
+version: "1"
+name: "recommended"
+description: "Balanced security and performance profile suitable for enterprise AI agent workflows"
+
+default_tool_allow: true
+unlisted_sink_policy: "block"
+
+diet:
+  mode: "search"
+  auto_expand: true
+  max_items: 20
+  table_threshold: 4
+
+protect:
+  - "margin"
+  - "salary"
+  - "deal_value"
+  - "internal_cost"
+
+drop:
+  - "debug_trace"
+  - "internal_id"
+
+packs:
+  - "pii-global"
+  - "pii-india"
+  - "sensitive-keys"
+  - "bloat-http"
+  - "core-verbs"
+  - "server-profiles"
+  - "arg-guards"

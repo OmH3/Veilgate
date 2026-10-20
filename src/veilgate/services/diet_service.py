@@ -1,8 +1,6 @@
 """Diet service for tool catalog pruning, schema compaction, and meta-tool search."""
 
-import copy
 import json
-import re
 from typing import Any
 
 from rank_bm25 import BM25Okapi

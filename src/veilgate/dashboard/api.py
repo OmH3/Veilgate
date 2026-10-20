@@ -1,6 +1,7 @@
 """FastAPI REST controller for Veilgate Dashboard and Reviewer UI."""
 
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from veilgate.dashboard.models import (

@@ -1,6 +1,7 @@
 """Unit tests for PolicyLoader 3-layer compilation and auto-expansion."""
 
 from pathlib import Path
+
 import pytest
 
 from veilgate.config.policy_loader import PolicyLoader

@@ -8,26 +8,20 @@ Tests verify:
 
 import json
 from pathlib import Path
-import pytest
 
-from veilgate.config.constants import ReasonCode
+import pytest
+from ulid import ULID
+
 from veilgate.config.policy_models import (
     Capability,
-    FieldAction,
-    FieldRuleSpec,
-    SinkMacro,
-    TokenizeSpec,
     ToolPolicySpec,
     Transport,
     UpstreamSpec,
     VeilgatePolicy,
 )
-from ulid import ULID
-
 from veilgate.config.settings import VeilgateSettings
 from veilgate.gateway import create_gateway_pipeline
 from veilgate.services.models import SessionContext, ToolRef
-
 
 GOLDEN_DIR = Path(__file__).parent.parent / "golden"
 

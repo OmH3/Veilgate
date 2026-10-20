@@ -1,0 +1,35 @@
+version: "1"
+name: "strict"
+description: "Zero-trust policy requiring explicit allowlisting, strict sink authorization, and human review for high-risk tools"
+
+default_tool_allow: false
+unlisted_sink_policy: "block"
+
+diet:
+  mode: "search"
+  auto_expand: false
+  max_items: 10
+  table_threshold: 3
+
+protect:
+  - "margin"
+  - "salary"
+  - "deal_value"
+  - "internal_cost"
+  - "financial"
+  - "credential"
+
+drop:
+  - "debug_trace"
+  - "internal_id"
+  - "trace_id"
+  - "raw_headers"
+
+packs:
+  - "pii-global"
+  - "pii-india"
+  - "sensitive-keys"
+  - "bloat-http"
+  - "core-verbs"
+  - "server-profiles"
+  - "arg-guards"

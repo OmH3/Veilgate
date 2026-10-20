@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+
 from ulid import ULID
 
 from veilgate.config.constants import ReasonCode

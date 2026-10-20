@@ -8,18 +8,12 @@ Tests:
 """
 
 from pathlib import Path
+
 import pytest
 from fastmcp import Client, FastMCP
-from mcp.types import TextContent
 
-from veilgate.config.constants import ReasonCode
-from veilgate.config.policy_loader import PolicyLoader
 from veilgate.config.policy_models import (
     Capability,
-    FieldAction,
-    FieldRuleSpec,
-    SinkMacro,
-    TokenizeSpec,
     ToolPolicySpec,
     Transport,
     UpstreamSpec,
@@ -27,7 +21,6 @@ from veilgate.config.policy_models import (
 )
 from veilgate.config.settings import VeilgateSettings
 from veilgate.gateway import create_gateway_pipeline, create_gateway_server
-from veilgate.repositories.models import AuditEventRecord
 
 
 @pytest.fixture

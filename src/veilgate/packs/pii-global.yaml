@@ -62,3 +62,27 @@ detectors:
     validator: "verhoeff_checksum"
     allowed_sinks: "none"
     allow_external_egress: false
+
+  - id: "aws_access_key"
+    token_type: "AWS_KEY"
+    sensitivity: "SECRET"
+    action: "TOKENIZE"
+    pattern: "^(?:AKIA|ASIA)[0-9A-Z]{16}$"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - id: "github_token"
+    token_type: "GITHUB_TOKEN"
+    sensitivity: "SECRET"
+    action: "TOKENIZE"
+    pattern: "^(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,255}$"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - id: "api_secret_key"
+    token_type: "API_KEY"
+    sensitivity: "SECRET"
+    action: "TOKENIZE"
+    pattern: "^sk-[A-Za-z0-9_-]{20,255}$"
+    allowed_sinks: "none"
+    allow_external_egress: false

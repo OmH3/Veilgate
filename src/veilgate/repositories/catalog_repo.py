@@ -1,8 +1,7 @@
 """Tool catalog and schema shape cache repository."""
 
-from datetime import datetime, timezone
 import json
-import aiosqlite
+from datetime import UTC, datetime
 
 from veilgate.config.constants import TABLE_SCHEMA_CACHE, TABLE_TOOL_CATALOG
 from veilgate.repositories.db import DatabaseManager
@@ -14,11 +13,13 @@ class CatalogRepository:
 
     def __init__(self, db_manager: DatabaseManager) -> None:
         self.db: DatabaseManager = db_manager
+        self._list_cache: dict[str | None, list[CatalogEntryRecord]] = {}
 
     async def upsert_tool(self, entry: CatalogEntryRecord) -> None:
         """Insert or update tool catalog entry."""
+        self._list_cache.clear()
         capabilities_json = json.dumps(entry.capabilities)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         async with self.db.connection() as conn:
             await conn.execute(
@@ -31,6 +32,7 @@ class CatalogRepository:
                 ON CONFLICT(qualified_ref) DO UPDATE SET
                     server_id = excluded.server_id,
                     fingerprint = excluded.fingerprint,
+                    pinned_fp = COALESCE(excluded.pinned_fp, tool_catalog.pinned_fp),
                     status = excluded.status,
                     capabilities = excluded.capabilities,
                     is_open_world = excluded.is_open_world,
@@ -77,6 +79,9 @@ class CatalogRepository:
 
     async def list_tools(self, server_id: str | None = None) -> list[CatalogEntryRecord]:
         """List catalog entries, optionally filtered by upstream server ID."""
+        if server_id in self._list_cache:
+            return self._list_cache[server_id]
+
         async with self.db.connection() as conn:
             if server_id:
                 cursor = await conn.execute(
@@ -95,11 +100,13 @@ class CatalogRepository:
                 data["is_open_world"] = bool(data["is_open_world"])
                 data["untrusted_tool"] = bool(data["untrusted_tool"])
                 results.append(CatalogEntryRecord.model_validate(data))
+            self._list_cache[server_id] = results
             return results
 
     async def pin_fingerprint(self, qualified_ref: str, fingerprint: str) -> None:
         """Pin approved tool fingerprint to protect against upstream rug pulls."""
-        now = datetime.now(timezone.utc).isoformat()
+        self._list_cache.clear()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""
@@ -113,7 +120,8 @@ class CatalogRepository:
 
     async def set_status(self, qualified_ref: str, status: str) -> None:
         """Update tool status ('active', 'quarantined', 'denied')."""
-        now = datetime.now(timezone.utc).isoformat()
+        self._list_cache.clear()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""
@@ -150,7 +158,7 @@ class CatalogRepository:
         source: str = "deterministic",
     ) -> None:
         """Cache field classifications for an observed response shape."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""

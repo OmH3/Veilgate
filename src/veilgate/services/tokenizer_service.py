@@ -1,6 +1,6 @@
 """Tokenizer service for minting, formatting, and storing encrypted tokens."""
 
-from typing import Any
+import hashlib
 
 from veilgate.config.constants import (
     EMAIL_TOKEN_DOMAIN,
@@ -10,7 +10,7 @@ from veilgate.config.constants import (
     URL_TOKEN_PREFIX,
 )
 from veilgate.config.policy_models import SensitivityClass, SinkMacro
-from veilgate.repositories.models import TokenRecord, TokenRecordCreate
+from veilgate.repositories.models import TokenRecordCreate
 from veilgate.repositories.vault_repo import VaultRepository
 from veilgate.security.crypto import generate_crockford_token_id
 from veilgate.services.models import SessionContext, ToolRef
@@ -54,6 +54,9 @@ class TokenizerService:
             rendered = f"vg-{token_id.lower()}@{EMAIL_TOKEN_DOMAIN}"
         elif format_preserving and token_type.upper() in ("URL", "URI"):
             rendered = f"{URL_TOKEN_PREFIX}{token_id.lower()}"
+        elif format_preserving and value_kind == "integer":
+            offset = int(hashlib.sha256(token_id.encode()).hexdigest()[:7], 16) % 99_999_999 + 1
+            rendered = str(SYNTHETIC_INT_BASE + offset)
         else:
             rendered = f"{TOKEN_PREFIX}{token_type.upper()}:{token_id}{TOKEN_SUFFIX}"
 

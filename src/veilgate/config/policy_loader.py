@@ -1,18 +1,24 @@
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
+
 import yaml
 
 from veilgate.config.policy_models import (
+    ArgGuardRuleSpec,
+    DetectorSpec,
     FieldAction,
     FieldRuleSpec,
     LearnedGrant,
+    SensitiveKeyRuleSpec,
+    ServerProfileRuleSpec,
     TokenizeSpec,
     ToolPolicySpec,
     Transport,
     UpstreamSpec,
     VeilgatePolicy,
+    VerbRuleSpec,
 )
 from veilgate.exceptions.types import ConfigError
 from veilgate.utils.logging_utils import setup_logger
@@ -37,7 +43,7 @@ def load_yaml_file(path: Path) -> dict[str, Any]:
     try:
         if not path.exists():
             return {}
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = yaml.safe_load(f)
             if content is None:
                 return {}
@@ -62,7 +68,7 @@ def load_yaml_file(path: Path) -> dict[str, Any]:
 def load_mcp_json(path: Path) -> list[UpstreamSpec]:
     """Parse client mcp.json configuration into UpstreamSpec objects."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
         raise ConfigError(
@@ -132,6 +138,7 @@ class PolicyLoader:
                 upstreams=upstreams,
             )
             self._compile_flat_keywords(policy)
+            self._load_packs(policy)
             self._cached_policy = policy
             logger.info(
                 f"SUCCESS | Policy synthesized in-memory from {self.from_mcp_json_path.name} "
@@ -162,21 +169,20 @@ class PolicyLoader:
         # Compile flat protect/drop keywords into deep wildcard JSONPath rules
         self._compile_flat_keywords(policy)
 
+        # Compile rule packs from packs/*.yaml
+        self._load_packs(policy)
+
         self._cached_policy = policy
         source_name = self.policy_path.name if self.policy_path else "in-memory"
         logger.info(
             f"SUCCESS | Policy compiled successfully from {source_name} "
             f"with {len(policy.upstreams)} upstreams, {len(policy.tools)} tool overrides, "
-            f"and {len(policy.learned_grants)} learned grants"
+            f"and {len(policy.loaded_detectors)} active PII detectors"
         )
         return policy
 
     def _compile_flat_keywords(self, policy: VeilgatePolicy) -> None:
-        """Expand flat protect and drop keyword lists into synthetic field rules.
-
-        Args:
-            policy: Policy model to mutate in-place.
-        """
+        """Expand flat protect and drop keyword lists into synthetic field rules."""
         synthetic_field_rules: list[FieldRuleSpec] = []
 
         for keyword in policy.protect:
@@ -207,7 +213,6 @@ class PolicyLoader:
             )
 
         if synthetic_field_rules:
-            # Append global keyword rules to a universal tool policy wildcard
             global_tool_spec = ToolPolicySpec(
                 match="*.*",
                 allow=True,
@@ -215,12 +220,60 @@ class PolicyLoader:
             )
             policy.tools.append(global_tool_spec)
 
-    def append_learned_grant(self, grant: LearnedGrant) -> None:
-        """Append an interactive dev grant to policy.learned.yaml and trigger hot reload.
+    def _load_packs(self, policy: VeilgatePolicy) -> None:
+        """Dynamically load and compile all declarative YAML rule packs."""
+        if not self.packs_dir.exists():
+            return
 
-        Args:
-            grant: Learned grant instance approved by user.
-        """
+        for pack_file in self.packs_dir.glob("*.yaml"):
+            pack_data = load_yaml_file(pack_file)
+            if not pack_data:
+                continue
+
+            # 1. PII detectors (pii-global, pii-india)
+            if "detectors" in pack_data and isinstance(pack_data["detectors"], list):
+                for d in pack_data["detectors"]:
+                    try:
+                        policy.loaded_detectors.append(DetectorSpec.model_validate(d))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse detector {d.get('id')} in {pack_file.name}: {e}")
+
+            # 2. Sensitive key stems (sensitive-keys)
+            if "rules" in pack_data and isinstance(pack_data["rules"], list):
+                for r in pack_data["rules"]:
+                    if "stems" in r:
+                        try:
+                            policy.loaded_sensitive_keys.append(SensitiveKeyRuleSpec.model_validate(r))
+                        except Exception as e:
+                            logger.warning(f"Failed to parse sensitive key rule in {pack_file.name}: {e}")
+                    elif "capability" in r:
+                        # 4. Verb rules (core-verbs)
+                        try:
+                            policy.loaded_verb_rules.append(VerbRuleSpec.model_validate(r))
+                        except Exception as e:
+                            logger.warning(f"Failed to parse verb rule in {pack_file.name}: {e}")
+                    elif "trust" in r:
+                        # 5. Server profiles (server-profiles)
+                        try:
+                            policy.loaded_server_profiles.append(ServerProfileRuleSpec.model_validate(r))
+                        except Exception as e:
+                            logger.warning(f"Failed to parse server profile in {pack_file.name}: {e}")
+
+            # 3. Bloat HTTP keys (bloat-http)
+            if "drop_keys" in pack_data and isinstance(pack_data["drop_keys"], list):
+                for k in pack_data["drop_keys"]:
+                    policy.loaded_bloat_keys.add(k.lower())
+
+            # 6. Argument guards (arg-guards)
+            if "guards" in pack_data and isinstance(pack_data["guards"], list):
+                for g in pack_data["guards"]:
+                    try:
+                        policy.loaded_arg_guards.append(ArgGuardRuleSpec.model_validate(g))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse arg guard in {pack_file.name}: {e}")
+
+    def append_learned_grant(self, grant: LearnedGrant) -> None:
+        """Append an interactive dev grant to policy.learned.yaml and trigger hot reload."""
         try:
             learned_raw = load_yaml_file(self.learned_policy_path)
             grants_list: list[dict[str, str]] = learned_raw.get("grants", [])
@@ -238,3 +291,42 @@ class PolicyLoader:
                 safe_message=f"Failed to persist learned grant to '{self.learned_policy_path.name}': {e}",
                 details={"file": str(self.learned_policy_path)},
             ) from e
+
+    def promote_learned_grants(self) -> int:
+        """Promote all grants in policy.learned.yaml into policy.yaml tool rules."""
+        if not self.policy_path or not self.learned_policy_path or not self.learned_policy_path.exists():
+            return 0
+
+        learned_raw = load_yaml_file(self.learned_policy_path)
+        grants: list[dict[str, str]] = learned_raw.get("grants", [])
+        if not grants:
+            return 0
+
+        user_raw = load_yaml_file(self.policy_path)
+        tools_list: list[dict[str, Any]] = user_raw.get("tools", [])
+
+        promoted_count = 0
+        for grant in grants:
+            pattern = grant.get("pattern", "")
+            if not pattern:
+                continue
+            # Add or update tool rule
+            tools_list.append({
+                "match": pattern,
+                "allow": True,
+                "require_approval": False,
+            })
+            promoted_count += 1
+
+        user_raw["tools"] = tools_list
+        with open(self.policy_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(user_raw, f, sort_keys=False)
+
+        # Clear learned policy file
+        with open(self.learned_policy_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"grants": []}, f)
+
+        self.load(force_reload=True)
+        logger.info(f"SUCCESS | Promoted {promoted_count} learned grants into {self.policy_path.name}")
+        return promoted_count
+

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+
 import pytest
 
 from veilgate.repositories.approval_repo import ApprovalRepository

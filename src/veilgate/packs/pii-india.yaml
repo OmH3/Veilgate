@@ -1,0 +1,45 @@
+version: "1"
+name: "pii-india"
+description: "High-precision detectors for Indian Personally Identifiable Information and financial identifiers"
+
+detectors:
+  - id: "india_aadhaar"
+    token_type: "AADHAAR"
+    sensitivity: "PII_HIGH"
+    action: "TOKENIZE"
+    pattern: "^\\b[2-9][0-9]{3}\\s?[0-9]{4}\\s?[0-9]{4}\\b$"
+    validator: "verhoeff_checksum"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - id: "india_pan"
+    token_type: "PAN"
+    sensitivity: "PII_HIGH"
+    action: "TOKENIZE"
+    pattern: "^[A-Z]{5}[0-9]{4}[A-Z]$"
+    allowed_sinks: "none"
+    allow_external_egress: false
+
+  - id: "india_ifsc"
+    token_type: "IFSC"
+    sensitivity: "PII_MEDIUM"
+    action: "TOKENIZE"
+    pattern: "^[A-Z]{4}0[A-Z0-9]{6}$"
+    allowed_sinks: "trusted_read"
+    allow_external_egress: false
+
+  - id: "india_upi"
+    token_type: "UPI_ID"
+    sensitivity: "PII_MEDIUM"
+    action: "TOKENIZE"
+    pattern: "^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z]{2,64}(?!\\.[a-zA-Z])$"
+    allowed_sinks: "trusted_read"
+    allow_external_egress: false
+
+  - id: "india_phone"
+    token_type: "PHONE"
+    sensitivity: "PII_MEDIUM"
+    action: "TOKENIZE"
+    pattern: "^(?:\\+91[\\-\\s]?)?[6789]\\d{9}$"
+    allowed_sinks: "trusted_read"
+    allow_external_egress: false

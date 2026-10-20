@@ -5,7 +5,9 @@ and provides fail-open degradation via JevUnavailableError when the service is u
 """
 
 import asyncio
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
 import httpx
 from pydantic import ValidationError
 

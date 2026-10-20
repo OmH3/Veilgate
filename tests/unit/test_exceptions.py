@@ -1,13 +1,8 @@
 """Unit tests for Veilgate semantic exception hierarchy."""
 
-import pytest
 
 from veilgate.config.constants import ReasonCode
 from veilgate.exceptions.types import (
-    ApprovalDeniedError,
-    ApprovalTimeoutError,
-    ConfigError,
-    LowIntegrityApprovalRequiredError,
     PolicyViolation,
     TaintViolationError,
     TokenNotFoundError,

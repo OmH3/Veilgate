@@ -1,6 +1,5 @@
 """Pydantic V2 response and request envelope models for Dashboard API."""
 
-from typing import Any
 from pydantic import BaseModel, Field
 
 from veilgate.repositories.models import ApprovalRecord, AuditEventRecord, SessionRecord

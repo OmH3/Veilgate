@@ -1,7 +1,6 @@
 """Repository for managing client session lifecycles and integrity states."""
 
-from datetime import datetime, timezone
-import aiosqlite
+from datetime import UTC, datetime
 
 from veilgate.config.constants import TABLE_SESSIONS
 from veilgate.repositories.db import DatabaseManager
@@ -21,7 +20,7 @@ class SessionRepository:
         label: str | None = None,
     ) -> SessionRecord:
         """Insert a new session or update last_seen_at for an existing session."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""
@@ -34,11 +33,15 @@ class SessionRepository:
                 (session_id, label, transport, now, now),
             )
             await conn.commit()
+            cursor = await conn.execute(
+                f"SELECT * FROM {TABLE_SESSIONS} WHERE session_id = ?;",
+                (session_id,),
+            )
+            row = await cursor.fetchone()
 
-        record = await self.get(session_id)
-        if record is None:
+        if row is None:
             raise RuntimeError(f"Failed to retrieve or create session {session_id}")
-        return record
+        return SessionRecord.model_validate(dict(row))
 
     async def get(self, session_id: str) -> SessionRecord | None:
         """Fetch session by ID."""
@@ -57,7 +60,7 @@ class SessionRepository:
         if integrity not in ("HIGH", "LOW"):
             raise ValueError(f"Invalid integrity state: {integrity}")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             await conn.execute(
                 f"""

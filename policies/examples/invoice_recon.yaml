@@ -1,0 +1,38 @@
+version: "1"
+name: "invoice_recon"
+description: "Production policy for automated invoice reconciliation workflow"
+
+extends: "recommended"
+default_tool_allow: true
+unlisted_sink_policy: "block"
+
+upstreams:
+  - id: "invoicedb"
+    transport: "stdio"
+    command: "python"
+    args: ["-m", "tests.fixtures.servers.fx_invoice_db"]
+  - id: "mailer"
+    transport: "stdio"
+    command: "python"
+    args: ["-m", "tests.fixtures.servers.fx_mailer"]
+
+protect:
+  - "margin"
+  - "salary"
+  - "internal_markup"
+
+drop:
+  - "debug_trace"
+  - "internal_row_id"
+
+tools:
+  - match: "invoicedb.delete_*"
+    allow: false
+
+  - match: "invoicedb.compare_*"
+    capabilities: ["read"]
+
+  - match: "mailer.send_email"
+    capabilities: ["external_egress"]
+    blocked_token_types: ["BANK_ROUTING", "BANK_ACCOUNT", "SSN", "PAN", "AADHAAR"]
+    arg_guards: ["body", "message", "text"]

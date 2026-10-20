@@ -1,6 +1,7 @@
 """Unit tests for JevClient and ShapeRedactor."""
 
 import json
+
 import httpx
 import pytest
 

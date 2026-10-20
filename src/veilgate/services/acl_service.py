@@ -1,7 +1,7 @@
 """Access control list (ACL) service evaluating tool authorization and risk levels."""
 
 import fnmatch
-from typing import Sequence
+from collections.abc import Sequence
 
 from veilgate.config.constants import ReasonCode
 from veilgate.config.policy_models import Capability, PolicyLayer, VeilgatePolicy

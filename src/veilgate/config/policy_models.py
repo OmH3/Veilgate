@@ -354,6 +354,69 @@ class JevDecisionResponse(BaseModel):
     answers: dict[str, JevAnswer] = Field(default_factory=dict, description="Answers indexed by question key.")
 
 
+class DetectorSpec(BaseModel):
+    """Specification of a regex or algorithmic PII detector from a rule pack."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    token_type: str
+    sensitivity: SensitivityClass = SensitivityClass.PII_HIGH
+    action: FieldAction = FieldAction.TOKENIZE
+    pattern: str
+    validator: str | None = None
+    format_preserving: bool = False
+    allowed_sinks: str = "none"
+    allow_external_egress: bool = False
+
+
+class SensitiveKeyRuleSpec(BaseModel):
+    """Specification of key stem rules from sensitive-keys pack."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    stems: list[str]
+    token_type: str
+    sensitivity: SensitivityClass = SensitivityClass.PII_HIGH
+    action: FieldAction = FieldAction.TOKENIZE
+    format_preserving: bool = False
+    allowed_sinks: str = "trusted_read"
+    allow_external_egress: bool = False
+
+
+class VerbRuleSpec(BaseModel):
+    """Specification of verb stem to capability mappings from core-verbs pack."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    capability: Capability
+    patterns: list[str]
+    risk_level: RiskLevel = RiskLevel.LOW
+
+
+class ServerProfileRuleSpec(BaseModel):
+    """Specification of server profile rules from server-profiles pack."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    match_server_id: str | None = None
+    match_command: str | None = None
+    match_url: str | None = None
+    trust: TrustLevel = TrustLevel.TRUSTED
+    default_capabilities: list[Capability] = Field(default_factory=list)
+    risk_level: RiskLevel = RiskLevel.LOW
+
+
+class ArgGuardRuleSpec(BaseModel):
+    """Specification of argument guard rules from arg-guards pack."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    arg_names: list[str]
+    allowed_token_types: list[str] = Field(default_factory=list)
+    disallow_embedded_tokens: bool = True
+
+
 class LearnedGrant(BaseModel):
     """Interactive grant persisted from --dev approval decisions."""
 
@@ -412,3 +475,28 @@ class VeilgatePolicy(BaseModel):
         default_factory=list,
         description="Interactive grants merged from policy.learned.yaml.",
     )
+    loaded_detectors: list[DetectorSpec] = Field(
+        default_factory=list,
+        description="Active PII detectors compiled from loaded packs.",
+    )
+    loaded_sensitive_keys: list[SensitiveKeyRuleSpec] = Field(
+        default_factory=list,
+        description="Active sensitive key stem rules compiled from sensitive-keys pack.",
+    )
+    loaded_bloat_keys: set[str] = Field(
+        default_factory=set,
+        description="Active HTTP bloat keys compiled from bloat-http pack.",
+    )
+    loaded_verb_rules: list[VerbRuleSpec] = Field(
+        default_factory=list,
+        description="Active verb stem capability rules compiled from core-verbs pack.",
+    )
+    loaded_server_profiles: list[ServerProfileRuleSpec] = Field(
+        default_factory=list,
+        description="Active server category trust profiles compiled from server-profiles pack.",
+    )
+    loaded_arg_guards: list[ArgGuardRuleSpec] = Field(
+        default_factory=list,
+        description="Active argument guards compiled from arg-guards pack.",
+    )
+

@@ -3,6 +3,7 @@
 import base64
 import os
 from pathlib import Path
+
 import pytest
 
 from veilgate.config.constants import CROCKFORD_BASE32_ALPHABET

@@ -4,7 +4,7 @@ Mirrors enterprise API Gateway exception architectures with structured reason
 codes, safe client error messages, and granular policy violation hierarchies.
 """
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from veilgate.config.constants import ReasonCode
 

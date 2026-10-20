@@ -1,6 +1,7 @@
 """Domain and data transfer models for Veilgate gateway pipeline services."""
 
 from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 from ulid import ULID
 
@@ -80,6 +81,7 @@ class TokenFinding(BaseModel):
     token_type: str
     arg_path: str
     is_standalone_scalar: bool
+    is_smuggled: bool = False
     record: TokenRecord | None = None
 
 

@@ -52,7 +52,7 @@ class TokenRecordCreate(BaseModel):
     origin_path: str
     origin_event_id: str
     allowed_sinks: list[str] | str
-    allow_external_egress: bool
+    allow_external_egress: bool = False
     ttl_seconds: int = 86_400
 
 

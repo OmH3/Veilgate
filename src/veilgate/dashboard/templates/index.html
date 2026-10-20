@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veilgate Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <span class="logo">🛡️</span>
+            <h1>Veilgate Firewall</h1>
+        </div>
+        <div class="status-badge" hx-get="/api/v1/metrics/summary" hx-trigger="load, every 5s" hx-target="#metrics-container">
+            <span class="pulse"></span> System Active
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Top Metrics Cards -->
+        <section id="metrics-container" class="metrics-grid">
+            <div class="card metric-card">
+                <h3>Total Calls</h3>
+                <p class="metric-val" id="total-calls">--</p>
+            </div>
+            <div class="card metric-card">
+                <h3>Blocked (Security)</h3>
+                <p class="metric-val text-red" id="blocked-calls">--</p>
+            </div>
+            <div class="card metric-card">
+                <h3>Tokens Minted</h3>
+                <p class="metric-val text-cyan" id="minted-tokens">--</p>
+            </div>
+            <div class="card metric-card">
+                <h3>Pending Approvals</h3>
+                <p class="metric-val text-yellow" id="pending-approvals">--</p>
+            </div>
+        </section>
+
+        <!-- Live Review Queue -->
+        <section class="card section-card">
+            <h2>Human Review Queue (HITL)</h2>
+            <div id="approvals-list" hx-get="/api/v1/approvals?status=PENDING" hx-trigger="load, every 2s">
+                <p class="empty-state">No pending approval requests.</p>
+            </div>
+        </section>
+
+        <!-- Tamper-Evident Audit Stream -->
+        <section class="card section-card">
+            <h2>Audit Trail Stream</h2>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Seq</th>
+                            <th>Time</th>
+                            <th>Kind</th>
+                            <th>Tool Reference</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-table-body" hx-get="/api/v1/events?limit=25" hx-trigger="load, every 3s">
+                        <tr><td colspan="5" class="empty-state">Loading live audit trail...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

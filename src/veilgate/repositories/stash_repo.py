@@ -1,7 +1,6 @@
 """Repository for caching dropped non-sensitive response payload fragments."""
 
-from datetime import datetime, timedelta, timezone
-import aiosqlite
+from datetime import UTC, datetime, timedelta
 
 from veilgate.config.constants import TABLE_RESULT_STASH
 from veilgate.repositories.db import DatabaseManager
@@ -13,6 +12,8 @@ class StashRepository:
 
     def __init__(self, db_manager: DatabaseManager) -> None:
         self.db: DatabaseManager = db_manager
+        self._cache: dict[tuple[str, str], StashRecord] = {}
+        self._payload_cache: dict[tuple[str, str, str], StashRecord] = {}
 
     async def stash_result(
         self,
@@ -23,7 +24,11 @@ class StashRepository:
         ttl_seconds: int = 1_800,
     ) -> StashRecord:
         """Cache dropped non-sensitive payload fields."""
-        now = datetime.now(timezone.utc)
+        payload_key = (session_id, qualified_ref, payload_json)
+        if payload_key in self._payload_cache:
+            return self._payload_cache[payload_key]
+
+        now = datetime.now(UTC)
         expires_at = (now + timedelta(seconds=ttl_seconds)).isoformat()
 
         async with self.db.connection() as conn:
@@ -37,14 +42,24 @@ class StashRepository:
             )
             await conn.commit()
 
-        record = await self.get_stash(stash_id, session_id)
-        if record is None:
-            raise RuntimeError(f"Failed to stash result {stash_id}")
+        record = StashRecord(
+            stash_id=stash_id,
+            session_id=session_id,
+            qualified_ref=qualified_ref,
+            payload_json=payload_json,
+            expires_at=expires_at,
+        )
+        self._cache[(stash_id, session_id)] = record
+        self._payload_cache[payload_key] = record
         return record
 
     async def get_stash(self, stash_id: str, session_id: str) -> StashRecord | None:
         """Fetch unexpired stashed payload scoped strictly to session_id."""
-        now = datetime.now(timezone.utc).isoformat()
+        cache_key = (stash_id, session_id)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             cursor = await conn.execute(
                 f"""
@@ -56,11 +71,13 @@ class StashRepository:
             row = await cursor.fetchone()
             if row is None:
                 return None
-            return StashRecord.model_validate(dict(row))
+            record = StashRecord.model_validate(dict(row))
+            self._cache[cache_key] = record
+            return record
 
     async def purge_expired(self) -> int:
         """Purge all expired stash rows."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
             cursor = await conn.execute(
                 f"DELETE FROM {TABLE_RESULT_STASH} WHERE expires_at < ?;",

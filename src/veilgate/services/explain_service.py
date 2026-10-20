@@ -1,6 +1,8 @@
 """Offline <50ms zero-LLM policy explanation and debugger service."""
 
+import re
 from typing import Any
+
 from pydantic import BaseModel
 
 from veilgate.config.policy_models import VeilgatePolicy
@@ -66,12 +68,13 @@ class ExplainService:
     def explain_payload(self, payload: dict[str, Any], path_prefix: str = "$") -> list[FieldExplanation]:
         """Explain how minimizer and classification rules evaluate a JSON payload."""
         explanations: list[FieldExplanation] = []
+        bloat_keys = self.policy.loaded_bloat_keys or DEFAULT_BLOAT_KEYS
 
         for key, val in payload.items():
             current_path = f"{path_prefix}.{key}"
             key_lower = key.lower()
 
-            if key_lower in DEFAULT_BLOAT_KEYS or key_lower.startswith("x-"):
+            if key_lower in [k.lower() for k in self.policy.drop] or key_lower in bloat_keys or key_lower.startswith("x-"):
                 explanations.append(
                     FieldExplanation(
                         path=current_path,
@@ -81,23 +84,57 @@ class ExplainService:
                 )
                 continue
 
-            # Key stem matching
+            # Key stem matching against loaded_sensitive_keys or fallback
             matched_stem = False
-            for stems, t_type, sens, sinks, format_pres in DEFAULT_SENSITIVE_KEY_STEMS:
-                if evaluate_operator("key_stem", key, {"stems": stems}):
-                    explanations.append(
-                        FieldExplanation(
-                            path=current_path,
-                            action="TOKENIZE",
-                            reason=f"Matched sensitive key stem {stems} in sensitive-keys pack",
-                            token_type=t_type,
+            if self.policy.loaded_sensitive_keys:
+                for rule in self.policy.loaded_sensitive_keys:
+                    if evaluate_operator("key_stem", key, {"stems": rule.stems}):
+                        explanations.append(
+                            FieldExplanation(
+                                path=current_path,
+                                action="TOKENIZE",
+                                reason=f"Matched sensitive key stem {rule.stems} in sensitive-keys pack",
+                                token_type=rule.token_type,
+                            )
                         )
-                    )
-                    matched_stem = True
-                    break
+                        matched_stem = True
+                        break
+            else:
+                for stems, t_type, _sens, _sinks, _format_pres in DEFAULT_SENSITIVE_KEY_STEMS:
+                    if evaluate_operator("key_stem", key, {"stems": stems}):
+                        explanations.append(
+                            FieldExplanation(
+                                path=current_path,
+                                action="TOKENIZE",
+                                reason=f"Matched sensitive key stem {stems} in sensitive-keys pack",
+                                token_type=t_type,
+                            )
+                        )
+                        matched_stem = True
+                        break
 
             if matched_stem:
                 continue
+
+            # Detector pattern check against loaded_detectors
+            if isinstance(val, str) and val.strip():
+                matched_detector = False
+                for detector in self.policy.loaded_detectors:
+                    if re.search(detector.pattern, val.strip()):
+                        if detector.validator and not evaluate_operator(detector.validator, val.strip()):
+                            continue
+                        explanations.append(
+                            FieldExplanation(
+                                path=current_path,
+                                action="TOKENIZE",
+                                reason=f"Matched detector {detector.id} in PII/secrets pack",
+                                token_type=detector.token_type,
+                            )
+                        )
+                        matched_detector = True
+                        break
+                if matched_detector:
+                    continue
 
             if isinstance(val, dict):
                 explanations.extend(self.explain_payload(val, current_path))

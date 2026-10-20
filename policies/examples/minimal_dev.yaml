@@ -1,0 +1,13 @@
+version: "1"
+name: "minimal_dev"
+description: "Minimal developer configuration for local testing and iteration"
+
+extends: "recommended"
+default_tool_allow: true
+unlisted_sink_policy: "forward_opaque"
+
+diet:
+  mode: "compact"
+  auto_expand: true
+
+upstreams: []

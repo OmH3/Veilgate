@@ -1,6 +1,7 @@
 """Unit tests for FastAPI dashboard REST endpoints."""
 
 from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
