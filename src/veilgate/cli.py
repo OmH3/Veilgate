@@ -504,7 +504,6 @@ def run(
     dev: Annotated[bool, typer.Option("--dev", help="Enable interactive dev mode with learning")] = False,
     transport: Annotated[str, typer.Option("--transport", help="Transport mode: stdio or http")] = "stdio",
     port: Annotated[int, typer.Option("--port", "-p", help="Port for HTTP transport")] = 8765,
-    no_jev: Annotated[bool, typer.Option("--no-jev", help="Disable Jev advisory classification")] = False,
 ) -> None:
     """Start the Veilgate Gateway server."""
     settings = VeilgateSettings(policy_path=config, dev_mode=dev, http_port=port)
@@ -527,9 +526,6 @@ def run(
             args=args,
         )
         policy.upstreams = [wrap_upstream]
-
-    if no_jev:
-        policy.jev.enabled = False
 
     async def _start() -> None:
         pipeline, _ = await create_gateway_pipeline(settings, policy=policy, policy_loader=loader)

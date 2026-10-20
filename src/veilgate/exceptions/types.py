@@ -265,18 +265,3 @@ class VaultCryptoError(VaultError):
 
 class ClassifierError(VeilgateError):
     """Base class for heuristic or model-based payload classifier errors."""
-
-
-class JevUnavailableError(ClassifierError):
-    """Raised when the Jev shape classification API is unreachable or times out."""
-
-    def __init__(
-        self,
-        safe_message: str = "Jev classifier service unavailable; falling back to deterministic rules.",
-        details: Mapping[str, str | int | float | bool] | None = None,
-    ) -> None:
-        super().__init__(
-            safe_message=safe_message,
-            reason=ReasonCode.INTERNAL_FAIL_CLOSED,
-            details=details,
-        )

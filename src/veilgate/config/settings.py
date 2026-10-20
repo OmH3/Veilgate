@@ -64,13 +64,3 @@ class VeilgateSettings(BaseSettings):
         default=1_800,
         description="Dropped non-sensitive payload stash TTL in seconds (default 30m).",
     )
-    jev_api_key: SecretStr | None = Field(
-        default=None,
-        alias="JEV_API_KEY",
-        description="Optional API key for Jev probabilistic shape classification.",
-    )
-    jev_base_url: str = Field(
-        default="https://jevmodel.net",
-        alias="JEV_BASE_URL",
-        description="Base URL for Jev inference endpoint.",
-    )

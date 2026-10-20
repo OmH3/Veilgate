@@ -22,11 +22,8 @@ def test_env_override(monkeypatch) -> None:
     monkeypatch.setenv("VEILGATE_LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("VEILGATE_DASHBOARD_PORT", "9090")
     monkeypatch.setenv("VEILGATE_DEV_MODE", "true")
-    monkeypatch.setenv("JEV_API_KEY", "test-jev-key")
 
     settings = VeilgateSettings()
     assert settings.log_level == "DEBUG"
     assert settings.dashboard_port == 9090
     assert settings.dev_mode is True
-    assert settings.jev_api_key is not None
-    assert settings.jev_api_key.get_secret_value() == "test-jev-key"
