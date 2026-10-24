@@ -71,10 +71,30 @@ class FirewallPipeline:
         self._known_sessions: set[str] = set()
         self._last_list_audit_state: dict[str, tuple[int, bool]] = {}
 
+    def _sync_live_policy(self) -> None:
+        """Hot-reload policy.yaml and policy.learned.yaml when backed by disk files."""
+        loader = getattr(self.approvals, "policy_loader", None)
+        if (
+            loader
+            and getattr(loader, "_cached_policy", None) is not None
+            and getattr(loader, "policy_path", None)
+            and loader.policy_path.exists()
+        ):
+            try:
+                latest = loader.load(force_reload=True)
+                self.acl.policy = latest
+                self.upstreams.policy = latest
+                self.taint.policy = latest
+                self.minimizer.policy = latest
+            except Exception as e:
+                logger.warning(f"Policy hot-reload skipped: {e}")
+
     async def on_list_tools(
         self, session: SessionContext
     ) -> list[dict[str, Any]]:
         """Orchestrate tool discovery: ingest upstreams, enforce ACL, and compact catalog."""
+        self._sync_live_policy()
+
         # Ensure session record exists
         if session.session_id not in self._known_sessions:
             await self.sessions.create_or_touch(session.session_id, transport=session.transport.value)
@@ -152,6 +172,8 @@ class FirewallPipeline:
         start_time = time.perf_counter()
         call_event_id = str(ULID())
         args_dict = dict(arguments)
+        self._sync_live_policy()
+
         logger.info(f"STARTED | step=on_call_tool | session={session.session_id} | tool={tool_name}")
         logger.info(
             f"INPUT | step=on_call_tool | {json.dumps({'tool': tool_name, 'args': args_dict}, default=str, ensure_ascii=False)}"

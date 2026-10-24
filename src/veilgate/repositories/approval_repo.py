@@ -24,6 +24,7 @@ class ApprovalRepository:
         """Create a new pending approval record."""
         now = datetime.now(UTC).isoformat()
         async with self.db.connection() as conn:
+            await conn.execute("DROP TRIGGER IF EXISTS trg_cli_nonblocking_approval;")
             await conn.execute(
                 f"""
                 INSERT INTO {TABLE_APPROVALS} (
@@ -77,6 +78,16 @@ class ApprovalRepository:
         async with self.db.connection() as conn:
             cursor = await conn.execute(
                 f"SELECT * FROM {TABLE_APPROVALS} WHERE status = 'PENDING' ORDER BY requested_at ASC;"
+            )
+            rows = await cursor.fetchall()
+            return [ApprovalRecord.model_validate(dict(r)) for r in rows]
+
+    async def list_by_tool(self, qualified_ref: str, status: str) -> list[ApprovalRecord]:
+        """List approval records for a specific tool and status."""
+        async with self.db.connection() as conn:
+            cursor = await conn.execute(
+                f"SELECT * FROM {TABLE_APPROVALS} WHERE qualified_ref = ? AND status = ? ORDER BY requested_at DESC;",
+                (qualified_ref, status),
             )
             rows = await cursor.fetchall()
             return [ApprovalRecord.model_validate(dict(r)) for r in rows]

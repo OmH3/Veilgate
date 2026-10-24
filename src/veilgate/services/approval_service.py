@@ -3,9 +3,11 @@
 import asyncio
 import hashlib
 import json
+import os
+import subprocess
 import sys
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from veilgate.config.policy_loader import PolicyLoader
@@ -25,66 +27,53 @@ def compute_args_hash(args: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _ask_terminal_choice(ref: ToolRef, args: Mapping[str, Any], reason: str) -> str | None:
-    """Prompt the developer directly on the controlling terminal (CONIN$/CONOUT$ on Windows, /dev/tty on Unix).
+def _ask_gui_or_terminal_choice(
+    ref: ToolRef,
+    args: Mapping[str, Any],
+    reason: str,
+    timeout_seconds: int = 120,
+) -> str | None:
+    """Prompt the developer via cross-platform native tkinter modal (Windows, macOS, Linux).
 
-    Returns '1' (Allow once), '2' (Allow always), '3' (Deny), or None if terminal is unavailable.
+    Returns '1' (Allow once), '2' (Allow always), '3' (Deny), or None if no display is available.
     """
-    tty_in = None
-    tty_out = None
-    try:
-        # If not attached to an interactive console session, defer purely to dashboard
-        if not sys.stdin.isatty() and not sys.stdout.isatty():
-            return None
-
-        if sys.platform == "win32":
-            tty_in = open("CONIN$", "r", encoding="utf-8")
-            tty_out = open("CONOUT$", "w", encoding="utf-8")
-        else:
-            tty_in = open("/dev/tty", "r", encoding="utf-8")
-            tty_out = open("/dev/tty", "w", encoding="utf-8")
-
-        prompt_text = (
-            f"\n"
-            f"╔══════════════════════════════════════════════════════════════╗\n"
-            f"║          [VEILGATE] EGRESS TOOL AUTHORIZATION REQUIRED       ║\n"
-            f"╚══════════════════════════════════════════════════════════════╝\n"
-            f"Tool:      {ref.qualified} (Server: {ref.server})\n"
-            f"Reason:    {reason}\n"
-            f"Arguments: {json.dumps(dict(args), default=str)[:200]}\n"
-            f"──────────────────────────────────────────────────────────────\n"
-            f"Select authorization option:\n"
-            f"  [1] Allow once         (authorize this call only)\n"
-            f"  [2] Allow always       (save grant to policy.learned.yaml)\n"
-            f"  [3] Deny               (block invocation immediately)\n"
-            f"Enter choice [1/2/3] (default: 3): "
-        )
-        tty_out.write(prompt_text)
-        tty_out.flush()
-
-        line = tty_in.readline()
-        if not line:
-            return None
-        choice = line.strip().lower()
-        return choice if choice else "3"
-    except Exception as e:
-        logger.debug(f"Direct terminal prompt unavailable: {e}")
+    # Skip launching GUI windows during short-timeout unit tests
+    if timeout_seconds <= 5 or os.environ.get("PYTEST_CURRENT_TEST"):
         return None
-    finally:
-        if tty_in:
-            try:
-                tty_in.close()
-            except Exception:
-                pass
-        if tty_out:
-            try:
-                tty_out.close()
-            except Exception:
-                pass
+
+    # On Linux/Unix without DISPLAY or WAYLAND_DISPLAY, fall back to dashboard/CLI
+    if sys.platform != "win32" and sys.platform != "darwin":
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            return None
+
+    try:
+        args_json = json.dumps(dict(args), default=str, ensure_ascii=False)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "veilgate.gui_prompt",
+                ref.qualified,
+                ref.server,
+                reason,
+                args_json,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        choice = (proc.stdout or "").strip()
+        if choice in ("1", "2", "3"):
+            return choice
+        return None
+    except Exception as e:
+        logger.debug(f"Cross-platform GUI prompt unavailable: {e}")
+        return None
 
 
 class ApprovalService:
-    """Brokers human approval requests across MCP elicitation, terminal prompts, and dashboard."""
+    """Brokers human approval requests across cross-platform GUI modals, terminal prompts, and dashboard."""
 
     def __init__(
         self,
@@ -108,45 +97,83 @@ class ApprovalService:
             logger.exception(f"ERROR | {type(e).__name__}: {e}")
             return False
 
-    async def _handle_terminal_prompt(
+    async def decide_request(
+        self,
+        target: str,
+        choice: str,
+        decided_by: str = "developer_gui",
+    ) -> ApprovalRecord | None:
+        """Apply a user authorization choice ('1'=Allow once, '2'=Allow always, '3'=Deny) to an approval ID or tool name."""
+        record = await self.approval_repo.get(target)
+        qualified_ref = record.qualified_ref if record else ToolRef.parse(target).qualified
+
+        normalized = choice.strip().lower()
+        if normalized in ("1", "once", "allow once", "allow_once", "allow-once"):
+            status = "APPROVED"
+            learned_grant = None
+        elif normalized in ("2", "always", "allow always", "allow_always", "allow-always"):
+            status = "APPROVED_AND_SAVED"
+            learned_grant = qualified_ref
+            grant = LearnedGrant(
+                grant_id=f"grnt_{generate_crockford_token_id()}",
+                pattern=learned_grant,
+                token_type="APPROVED_GRANT",
+                created_at=datetime.now(UTC).isoformat(),
+            )
+            self.policy_loader.append_learned_grant(grant)
+            self.policy_loader.promote_learned_grants()
+        else:
+            status = "DENIED"
+            learned_grant = None
+
+        if record:
+            await self.approval_repo.decide(
+                record.approval_id,
+                status=status,
+                decided_by=decided_by,
+                learned_grant=learned_grant,
+            )
+            return await self.approval_repo.get(record.approval_id)
+
+        return ApprovalRecord(
+            approval_id=target,
+            session_id="gui_session",
+            qualified_ref=qualified_ref,
+            summary_json="{}",
+            reason="GUI_APPROVAL",
+            status=status,
+            requested_at=datetime.now(UTC).isoformat(),
+            decided_at=datetime.now(UTC).isoformat(),
+            decided_by=decided_by,
+            learned_grant=learned_grant,
+        )
+
+    async def _handle_gui_prompt(
         self,
         approval_id: str,
         ref: ToolRef,
         args: dict[str, Any],
         reason: str,
     ) -> None:
-        """Run terminal prompt in background thread and persist decision to repository."""
+        """Run cross-platform GUI popup in background thread and persist decision to repository."""
         try:
-            choice = await asyncio.to_thread(_ask_terminal_choice, ref, args, reason)
+            choice = await asyncio.to_thread(
+                _ask_gui_or_terminal_choice,
+                ref,
+                args,
+                reason,
+                self.timeout_seconds,
+            )
             if choice is None:
-                # Terminal prompt not available or running headless/IDE; leave in PENDING for Dashboard review!
                 return
 
             existing = await self.approval_repo.get(approval_id)
             if not existing or existing.status != "PENDING":
                 return
 
-            if choice in ("1", "once", "allow once"):
-                await self.approval_repo.decide(
-                    approval_id,
-                    status="APPROVED",
-                    decided_by="developer_terminal",
-                )
-            elif choice in ("2", "always", "allow always"):
-                await self.approval_repo.decide(
-                    approval_id,
-                    status="APPROVED_AND_SAVED",
-                    decided_by="developer_terminal",
-                    learned_grant=ref.qualified,
-                )
-            elif choice in ("3", "deny", "block"):
-                await self.approval_repo.decide(
-                    approval_id,
-                    status="DENIED",
-                    decided_by="developer_terminal",
-                )
+            await self.decide_request(approval_id, choice, decided_by="developer_gui_modal")
         except Exception as e:
-            logger.exception(f"Error handling terminal prompt for {approval_id}: {e}")
+            logger.exception(f"Error handling GUI approval prompt for {approval_id}: {e}")
 
     async def request_approval(
         self,
@@ -155,15 +182,16 @@ class ApprovalService:
         session: SessionContext,
         reason: str,
     ) -> ApprovalDecision:
-        """Create approval request bound to canonical args_hash and await reviewer decision."""
-        approval_id = f"appr_{generate_crockford_token_id()}"
+        """Create approval request bound to canonical args_hash and await reviewer decision via GUI modal or Dashboard."""
         args_hash = compute_args_hash(args)
+        approval_id = f"appr_{generate_crockford_token_id()}"
         summary_json = json.dumps({
             "tool": ref.qualified,
             "args_hash": args_hash,
+            "args": dict(args),
+            "expires_at": (datetime.now(UTC) + timedelta(seconds=self.timeout_seconds)).isoformat(),
             "args_sample": {k: str(v)[:60] for k, v in args.items()},
         })
-
         await self.approval_repo.create_request(
             approval_id=approval_id,
             session_id=session.session_id,
@@ -174,15 +202,15 @@ class ApprovalService:
 
         logger.info(
             f"APPROVAL_REQUIRED | id={approval_id} tool={ref.qualified} reason={reason} "
-            f"args_hash={args_hash[:12]} -> awaiting decision (timeout={self.timeout_seconds}s)"
+            f"args_hash={args_hash[:12]} -> launching native approval modal (timeout={self.timeout_seconds}s)"
         )
 
         prompt_task = asyncio.create_task(
-            self._handle_terminal_prompt(approval_id, ref, args, reason)
+            self._handle_gui_prompt(approval_id, ref, args, reason)
         )
 
         start = asyncio.get_event_loop().time()
-        poll_interval = 0.05 if self.timeout_seconds <= 2 else 0.25
+        poll_interval = 0.05 if self.timeout_seconds <= 2 else 0.15
 
         try:
             while (asyncio.get_event_loop().time() - start) < self.timeout_seconds:
@@ -203,8 +231,8 @@ class ApprovalService:
                                 decided_by="toctou_args_hash_mismatch",
                             )
 
-                    # Persist learned grant if "APPROVED_AND_SAVED" was chosen
-                    if record.status == "APPROVED_AND_SAVED":
+                    # Persist learned grant if "APPROVED_AND_SAVED" was chosen via Dashboard
+                    if record.status == "APPROVED_AND_SAVED" and record.decided_by != "developer_gui_modal":
                         pattern = record.learned_grant or ref.qualified
                         grant = LearnedGrant(
                             grant_id=f"grnt_{generate_crockford_token_id()}",
@@ -233,4 +261,3 @@ class ApprovalService:
         finally:
             if not prompt_task.done():
                 prompt_task.cancel()
-

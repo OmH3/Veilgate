@@ -310,12 +310,21 @@ class PolicyLoader:
             pattern = grant.get("pattern", "")
             if not pattern:
                 continue
-            # Add or update tool rule
-            tools_list.append({
-                "match": pattern,
-                "allow": True,
-                "require_approval": False,
-            })
+            updated_existing = False
+            for existing_rule in tools_list:
+                if str(existing_rule.get("match", "")).lower() == pattern.lower():
+                    existing_rule["allow"] = True
+                    existing_rule["require_approval"] = False
+                    updated_existing = True
+            if not updated_existing:
+                tools_list.insert(
+                    0,
+                    {
+                        "match": pattern,
+                        "allow": True,
+                        "require_approval": False,
+                    },
+                )
             promoted_count += 1
 
         user_raw["tools"] = tools_list
@@ -329,4 +338,3 @@ class PolicyLoader:
         self.load(force_reload=True)
         logger.info(f"SUCCESS | Promoted {promoted_count} learned grants into {self.policy_path.name}")
         return promoted_count
-

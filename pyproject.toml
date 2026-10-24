@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "veilgate"
-version = "0.1.1"
+version = "0.1.2"
 description = "Local-First Zero-Trust MCP Privacy Firewall & Context-Diet Gateway"
 readme = "README.md"
 requires-python = ">=3.11"
