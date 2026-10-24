@@ -1,11 +1,11 @@
 <p align="center">
-  <a href="https://github.com/OmH3/Veilgate" target="blank"><img src="docs/assets/logo.svg" width="120" alt="Veilgate Logo" /></a>
+  <a href="https://github.com/OmH3/Veilgate" target="blank"><img src="https://raw.githubusercontent.com/OmH3/Veilgate/main/docs/assets/logo.svg" width="120" alt="Veilgate Logo" /></a>
 </p>
 
 <p align="center">A local-first zero-trust <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol (MCP)</a> privacy firewall & context-diet gateway.</p>
 
 <p align="center">
-  <a href="https://github.com/OmH3/Veilgate/releases" target="_blank"><img src="https://img.shields.io/badge/version-0.1.0-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/OmH3/Veilgate/releases" target="_blank"><img src="https://img.shields.io/badge/version-0.1.1-blue.svg" alt="Version" /></a>
   <a href="https://github.com/OmH3/Veilgate/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <a href="https://www.python.org/" target="_blank"><img src="https://img.shields.io/badge/python-%3E%3D3.11-blue.svg" alt="Python Versions" /></a>
   <a href="https://github.com/OmH3/Veilgate/actions" target="_blank"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status" /></a>
@@ -170,7 +170,7 @@ Open **`http://localhost:8765`** in your browser.
 Veilgate treats egress and unallowed tools with zero trust. Whenever an agent attempts to invoke a tool that lacks pre-approved authorization or touches external networks, execution is **automatically paused** and queued for developer review:
 
 <p align="center">
-  <img src="docs/assets/dashboard-approval-preview.png" width="850" alt="Veilgate Approval Dashboard Preview" />
+  <img src="https://raw.githubusercontent.com/OmH3/Veilgate/main/docs/assets/dashboard-approval-preview.png" width="850" alt="Veilgate Approval Dashboard Preview" />
 </p>
 
 ### Decision Matrix
