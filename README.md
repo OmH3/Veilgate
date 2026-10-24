@@ -5,9 +5,9 @@
 <p align="center">A local-first zero-trust <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol (MCP)</a> privacy firewall & context-diet gateway.</p>
 
 <p align="center">
-  <a href="https://github.com/OmH3/Veilgate/releases" target="_blank"><img src="https://img.shields.io/badge/version-0.1.1-blue.svg" alt="Version" /></a>
-  <a href="https://github.com/OmH3/Veilgate/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <a href="https://www.python.org/" target="_blank"><img src="https://img.shields.io/badge/python-%3E%3D3.11-blue.svg" alt="Python Versions" /></a>
+  <a href="https://pypi.org/project/veilgate/" target="_blank"><img src="https://img.shields.io/pypi/v/veilgate.svg" alt="PyPI Version" /></a>
+  <a href="https://pypi.org/project/veilgate/" target="_blank"><img src="https://img.shields.io/pypi/pyversions/veilgate.svg" alt="Python Versions" /></a>
+  <a href="https://github.com/OmH3/Veilgate/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/pypi/l/veilgate.svg" alt="License" /></a>
   <a href="https://github.com/OmH3/Veilgate/actions" target="_blank"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status" /></a>
   <a href="https://github.com/OmH3/Veilgate" target="_blank"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen.svg" alt="Coverage" /></a>
   <a href="https://discord.gg/veilgate" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
@@ -111,7 +111,24 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ---
 
-## Project Setup
+## Installation
+
+Install Veilgate directly from [PyPI](https://pypi.org/project/veilgate/):
+
+```bash
+# Standard installation
+pip install veilgate
+
+# With web observability dashboard extras
+pip install "veilgate[dashboard]"
+
+# Or run directly via uv without installing:
+uvx veilgate --help
+```
+
+---
+
+## Project Setup (Contributing / Development)
 
 Clone the repository and synchronize dependencies into an isolated virtual environment:
 
