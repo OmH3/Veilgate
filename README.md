@@ -1,15 +1,15 @@
 <p align="center">
-  <a href="https://github.com/veilgate/veilgate" target="blank"><img src="https://raw.githubusercontent.com/veilgate/veilgate/main/docs/assets/veilgate-logo.svg" width="120" alt="Veilgate Logo" onerror="this.src='https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/shieldsdotio.svg'" /></a>
+  <a href="https://github.com/OmH3/Veilgate" target="blank"><img src="docs/assets/logo.svg" width="120" alt="Veilgate Logo" /></a>
 </p>
 
 <p align="center">A local-first zero-trust <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol (MCP)</a> privacy firewall & context-diet gateway.</p>
 
 <p align="center">
-  <a href="https://pypi.org/project/veilgate/" target="_blank"><img src="https://img.shields.io/pypi/v/veilgate.svg" alt="PyPI Version" /></a>
-  <a href="https://pypi.org/project/veilgate/" target="_blank"><img src="https://img.shields.io/pypi/l/veilgate.svg" alt="Package License" /></a>
-  <a href="https://pypi.org/project/veilgate/" target="_blank"><img src="https://img.shields.io/pypi/pyversions/veilgate.svg" alt="Python Versions" /></a>
-  <a href="https://github.com/veilgate/veilgate/actions" target="_blank"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status" /></a>
-  <a href="https://codecov.io/gh/veilgate/veilgate" target="_blank"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen.svg" alt="Coverage" /></a>
+  <a href="https://github.com/OmH3/Veilgate/releases" target="_blank"><img src="https://img.shields.io/badge/version-0.1.0-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/OmH3/Veilgate/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
+  <a href="https://www.python.org/" target="_blank"><img src="https://img.shields.io/badge/python-%3E%3D3.11-blue.svg" alt="Python Versions" /></a>
+  <a href="https://github.com/OmH3/Veilgate/actions" target="_blank"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status" /></a>
+  <a href="https://github.com/OmH3/Veilgate" target="_blank"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen.svg" alt="Coverage" /></a>
   <a href="https://discord.gg/veilgate" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
 </p>
 
@@ -117,7 +117,7 @@ Clone the repository and synchronize dependencies into an isolated virtual envir
 
 ```bash
 # Clone repository
-git clone https://github.com/veilgate/veilgate.git
+git clone https://github.com/OmH3/Veilgate.git
 cd veilgate
 
 # Install with development and dashboard extras
@@ -170,7 +170,7 @@ Open **`http://localhost:8765`** in your browser.
 Veilgate treats egress and unallowed tools with zero trust. Whenever an agent attempts to invoke a tool that lacks pre-approved authorization or touches external networks, execution is **automatically paused** and queued for developer review:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/veilgate/veilgate/main/docs/assets/dashboard-approval-preview.png" width="850" alt="Veilgate Approval Card Preview" onerror="this.style.display='none'" />
+  <img src="docs/assets/dashboard-approval-preview.png" width="850" alt="Veilgate Approval Dashboard Preview" />
 </p>
 
 ### Decision Matrix
@@ -263,9 +263,9 @@ uv run twine upload dist/*
 
 ## Resources & Support
 
-- **Documentation:** [https://github.com/veilgate/veilgate](https://github.com/veilgate/veilgate)
+- **Documentation:** [https://github.com/OmH3/Veilgate](https://github.com/OmH3/Veilgate)
 - **Model Context Protocol Specification:** [https://modelcontextprotocol.io](https://modelcontextprotocol.io)
-- **Issues & Bug Reports:** [https://github.com/veilgate/veilgate/issues](https://github.com/veilgate/veilgate/issues)
+- **Issues & Bug Reports:** [https://github.com/OmH3/Veilgate/issues](https://github.com/OmH3/Veilgate/issues)
 - **Discussions & Community:** [Discord Community](https://discord.gg/veilgate)
 
 ---

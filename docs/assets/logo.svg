@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="120" height="120">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#22c55e" />
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Outer Ambient Glow Shield -->
+  <path d="M 100,20 L 170,55 C 170,125 100,175 100,175 C 100,175 30,125 30,55 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="url(#borderGrad)" 
+        stroke-width="5" 
+        filter="url(#glow)" 
+        opacity="0.85" />
+
+  <!-- Inner Solid Shield -->
+  <path d="M 100,32 L 158,62 C 158,120 100,162 100,162 C 100,162 42,120 42,62 Z" 
+        fill="#0f172a" 
+        stroke="url(#borderGrad)" 
+        stroke-width="2.5" />
+
+  <!-- Firewall Grid Gridlines -->
+  <path d="M 70,65 L 130,65 M 60,95 L 140,95 M 70,125 L 130,125" 
+        stroke="#1e293b" 
+        stroke-width="2" 
+        stroke-linecap="round" />
+  <path d="M 100,50 L 100,145" 
+        stroke="#1e293b" 
+        stroke-width="2" 
+        stroke-linecap="round" />
+
+  <!-- Glowing Privacy Keyhole / Core Node -->
+  <circle cx="100" cy="90" r="14" fill="url(#coreGrad)" filter="url(#glow)" />
+  <path d="M 94,92 L 106,92 L 110,120 L 90,120 Z" fill="url(#coreGrad)" filter="url(#glow)" />
+  <circle cx="100" cy="90" r="5" fill="#0f172a" />
+</svg>
