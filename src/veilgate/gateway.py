@@ -87,7 +87,6 @@ async def create_gateway_pipeline(
         approval_repo=approval_repo,
         policy_loader=loader,
         timeout_seconds=settings.approval_timeout_seconds,
-        dev_mode=settings.dev_mode,
     )
     audit_service = AuditService(audit_repo)
     upstream_registry = UpstreamRegistry(

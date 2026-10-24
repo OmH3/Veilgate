@@ -434,14 +434,16 @@ def catalog_impl(
 
 @app.command()
 def dashboard(
+    config: Annotated[Path, typer.Option("--config", "-c", help="Path to policy.yaml")] = Path("./policy.yaml"),
     port: Annotated[int, typer.Option("--port", "-p", help="Dashboard HTTP port")] = 8765,
-    db_path: Annotated[Path, typer.Option("--db", help="Path to SQLite database")] = Path("./veilgate.db"),
+    db: Annotated[Path | None, typer.Option("--db", help="Explicit path to SQLite database")] = None,
 ) -> None:
     """Launch the Veilgate operator and reviewer dashboard."""
-    mgr = DatabaseManager(db_path)
+    settings = VeilgateSettings(policy_path=config, db_path=db) if db else VeilgateSettings(policy_path=config)
+    mgr = DatabaseManager(settings.db_path)
     asyncio.run(mgr.initialize())
     app_instance = create_dashboard_app(mgr)
-    typer.echo(f"Starting Veilgate Dashboard on http://localhost:{port}")
+    typer.echo(f"Starting Veilgate Dashboard on http://localhost:{port} (Database: {settings.db_path})")
     uvicorn.run(app_instance, host="127.0.0.1", port=port, log_level="info")
 
 
@@ -501,12 +503,11 @@ def run(
     config: Annotated[Path, typer.Option("--config", "-c", help="Path to policy.yaml")] = Path("./policy.yaml"),
     from_mcp_json: Annotated[Path | None, typer.Option("--from-mcp-json", help="Wrap existing mcp.json directly in memory")] = None,
     wrap: Annotated[str | None, typer.Option("--wrap", help="Zero-config wrapper for single stdio command")] = None,
-    dev: Annotated[bool, typer.Option("--dev", help="Enable interactive dev mode with learning")] = False,
     transport: Annotated[str, typer.Option("--transport", help="Transport mode: stdio or http")] = "stdio",
     port: Annotated[int, typer.Option("--port", "-p", help="Port for HTTP transport")] = 8765,
 ) -> None:
     """Start the Veilgate Gateway server."""
-    settings = VeilgateSettings(policy_path=config, dev_mode=dev, http_port=port)
+    settings = VeilgateSettings(policy_path=config, http_port=port)
     loader = PolicyLoader(
         policy_path=config if not (from_mcp_json or wrap) else None,
         from_mcp_json=from_mcp_json,

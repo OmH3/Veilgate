@@ -1,8 +1,9 @@
 """Environment and operational runtime settings for Veilgate Gateway."""
 
 from pathlib import Path
+from typing import Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,10 +45,6 @@ class VeilgateSettings(BaseSettings):
         default=8765,
         description="Port for streamable HTTP MCP transport.",
     )
-    dev_mode: bool = Field(
-        default=False,
-        description="Interactive development mode with live elicitation prompts and learning.",
-    )
     upstream_timeout_seconds: float = Field(
         default=30.0,
         description="Maximum seconds to wait for an upstream MCP server response.",
@@ -64,3 +61,30 @@ class VeilgateSettings(BaseSettings):
         default=1_800,
         description="Dropped non-sensitive payload stash TTL in seconds (default 30m).",
     )
+
+    @model_validator(mode="after")
+    def _resolve_canonical_paths(self) -> Self:
+        """Canonically anchor db_path and learned_policy_path next to the policy file.
+
+        Prevents cwd-dependent state divergence when Veilgate is spawned by IDEs
+        or MCP clients running in arbitrary working directories.
+        """
+        resolved_policy = self.policy_path.resolve()
+        if self.policy_path.exists():
+            self.policy_path = resolved_policy
+
+        if self.db_path == Path("./veilgate.db") or self.db_path is None:
+            if resolved_policy.exists() or resolved_policy.parent.exists():
+                self.db_path = resolved_policy.parent / "veilgate.db"
+            else:
+                self.db_path = Path.home() / ".veilgate" / "veilgate.db"
+        else:
+            self.db_path = self.db_path.resolve()
+
+        if self.learned_policy_path == Path("./policy.learned.yaml") or self.learned_policy_path is None:
+            self.learned_policy_path = resolved_policy.parent / "policy.learned.yaml"
+        else:
+            self.learned_policy_path = self.learned_policy_path.resolve()
+
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        return self

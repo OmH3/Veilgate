@@ -4,16 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Veilgate Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=2">
 </head>
 <body>
     <header class="header">
         <div class="brand">
             <span class="logo">🛡️</span>
-            <h1>Veilgate Firewall</h1>
+            <h1>Veilgate Privacy Firewall</h1>
         </div>
-        <div class="status-badge" hx-get="/api/v1/metrics/summary" hx-trigger="load, every 5s" hx-target="#metrics-container">
+        <div class="status-badge">
             <span class="pulse"></span> System Active
         </div>
     </header>
@@ -22,34 +21,34 @@
         <!-- Top Metrics Cards -->
         <section id="metrics-container" class="metrics-grid">
             <div class="card metric-card">
-                <h3>Total Calls</h3>
-                <p class="metric-val" id="total-calls">--</p>
+                <h3>Total Intercepted Calls</h3>
+                <p class="metric-val" id="total-calls">0</p>
             </div>
             <div class="card metric-card">
-                <h3>Blocked (Security)</h3>
-                <p class="metric-val text-red" id="blocked-calls">--</p>
+                <h3>Blocked Exfiltrations</h3>
+                <p class="metric-val text-red" id="blocked-calls">0</p>
             </div>
             <div class="card metric-card">
                 <h3>Tokens Minted</h3>
-                <p class="metric-val text-cyan" id="minted-tokens">--</p>
+                <p class="metric-val text-cyan" id="minted-tokens">0</p>
             </div>
             <div class="card metric-card">
                 <h3>Pending Approvals</h3>
-                <p class="metric-val text-yellow" id="pending-approvals">--</p>
+                <p class="metric-val text-yellow" id="pending-approvals">0</p>
             </div>
         </section>
 
         <!-- Live Review Queue -->
         <section class="card section-card">
             <h2>Human Review Queue (HITL)</h2>
-            <div id="approvals-list" hx-get="/api/v1/approvals?status=PENDING" hx-trigger="load, every 2s">
+            <div id="approvals-list">
                 <p class="empty-state">No pending approval requests.</p>
             </div>
         </section>
 
         <!-- Tamper-Evident Audit Stream -->
         <section class="card section-card">
-            <h2>Audit Trail Stream</h2>
+            <h2>Live Tamper-Evident Audit Trail</h2>
             <div class="table-container">
                 <table class="data-table">
                     <thead>
@@ -59,14 +58,151 @@
                             <th>Kind</th>
                             <th>Tool Reference</th>
                             <th>Reason</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
-                    <tbody id="audit-table-body" hx-get="/api/v1/events?limit=25" hx-trigger="load, every 3s">
-                        <tr><td colspan="5" class="empty-state">Loading live audit trail...</td></tr>
+                    <tbody id="audit-table-body">
+                        <tr><td colspan="6" class="empty-state">Loading live audit trail...</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
     </main>
+
+    <script>
+        async function fetchMetrics() {
+            try {
+                const res = await fetch('/api/v1/metrics/summary');
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById('total-calls').textContent = data.total_events || 0;
+                document.getElementById('minted-tokens').textContent = data.total_tokens_minted || 0;
+                
+                let totalBlocks = 0;
+                if (data.blocks_by_reason) {
+                    for (const reason in data.blocks_by_reason) {
+                        totalBlocks += data.blocks_by_reason[reason];
+                    }
+                }
+                document.getElementById('blocked-calls').textContent = totalBlocks;
+            } catch (err) {
+                console.error("Error fetching metrics:", err);
+            }
+        }
+
+        async function fetchApprovals() {
+            try {
+                const res = await fetch('/api/v1/approvals');
+                if (!res.ok) return;
+                const data = await res.json();
+                const container = document.getElementById('approvals-list');
+                const countBadge = document.getElementById('pending-approvals');
+                
+                const items = data.items || [];
+                countBadge.textContent = items.length;
+
+                if (items.length === 0) {
+                    container.innerHTML = '<p class="empty-state">No pending approval requests.</p>';
+                    return;
+                }
+
+                let html = '';
+                for (const item of items) {
+                    let sampleArgs = '';
+                    try {
+                        const parsed = JSON.parse(item.summary_json || '{}');
+                        sampleArgs = JSON.stringify(parsed.args_sample || {});
+                    } catch (e) {
+                        sampleArgs = item.summary_json || '';
+                    }
+
+                    html += `
+                    <div class="approval-item">
+                        <div class="approval-info">
+                            <span class="approval-tool">${item.qualified_ref}</span>
+                            <span class="approval-meta">ID: <code>${item.approval_id}</code> | Reason: <strong>${item.reason}</strong></span>
+                            <div class="approval-args">${sampleArgs}</div>
+                        </div>
+                        <div class="approval-actions">
+                            <button class="btn btn-once" onclick="submitDecision('${item.approval_id}', 'APPROVED')">⚡ Allow Once</button>
+                            <button class="btn btn-always" onclick="submitDecision('${item.approval_id}', 'APPROVED_AND_SAVED', '${item.qualified_ref}')">🛡️ Allow Always</button>
+                            <button class="btn btn-deny" onclick="submitDecision('${item.approval_id}', 'DENIED')">✕ Deny</button>
+                        </div>
+                    </div>`;
+                }
+                container.innerHTML = html;
+            } catch (err) {
+                console.error("Error fetching approvals:", err);
+            }
+        }
+
+        async function submitDecision(approvalId, decision, grantPattern) {
+            try {
+                const payload = {
+                    decision: decision,
+                    decided_by: "dashboard_reviewer",
+                    learned_grant: grantPattern || null
+                };
+                const res = await fetch(`/api/v1/approvals/${approvalId}/decision`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    await fetchApprovals();
+                    await fetchAuditEvents();
+                } else {
+                    alert("Failed to submit decision: " + res.statusText);
+                }
+            } catch (err) {
+                console.error("Error submitting decision:", err);
+            }
+        }
+
+        async function fetchAuditEvents() {
+            try {
+                const res = await fetch('/api/v1/events?limit=25');
+                if (!res.ok) return;
+                const data = await res.json();
+                const tbody = document.getElementById('audit-table-body');
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No audit events recorded yet.</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                for (const ev of items) {
+                    const timeStr = ev.ts ? ev.ts.slice(11, 19) : '--:--:--';
+                    let badgeClass = 'badge-call';
+                    if (ev.kind === 'SECURITY' || ev.kind === 'BLOCK') badgeClass = 'badge-security';
+                    else if (ev.kind === 'LIST') badgeClass = 'badge-list';
+                    else if (ev.kind === 'APPROVAL') badgeClass = 'badge-approval';
+
+                    html += `
+                    <tr>
+                        <td class="mono">#${ev.seq}</td>
+                        <td class="mono">${timeStr}</td>
+                        <td><span class="badge ${badgeClass}">${ev.kind}</span></td>
+                        <td class="mono">${ev.qualified_ref || '-'}</td>
+                        <td>${ev.reason || '-'}</td>
+                        <td class="mono text-secondary" style="font-size:0.75rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${ev.details_json || ''}</td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (err) {
+                console.error("Error fetching audit events:", err);
+            }
+        }
+
+        async function refreshAll() {
+            await Promise.all([fetchMetrics(), fetchApprovals(), fetchAuditEvents()]);
+        }
+
+        // Initial load and recurring 2-second poll
+        refreshAll();
+        setInterval(refreshAll, 2000);
+    </script>
 </body>
 </html>

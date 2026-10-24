@@ -4,7 +4,7 @@ import fnmatch
 from collections.abc import Sequence
 
 from veilgate.config.constants import ReasonCode
-from veilgate.config.policy_models import Capability, PolicyLayer, VeilgatePolicy
+from veilgate.config.policy_models import Capability, PolicyLayer, ToolPolicySpec, VeilgatePolicy
 from veilgate.repositories.models import CatalogEntryRecord
 from veilgate.services.models import AclDecision, SessionContext, ToolRef
 from veilgate.utils.logging_utils import setup_logger
@@ -25,6 +25,22 @@ class AclService:
     def __init__(self, policy: VeilgatePolicy) -> None:
         self.policy: VeilgatePolicy = policy
 
+    def _is_egress_tool(
+        self,
+        ref: ToolRef,
+        catalog_entry: CatalogEntryRecord | None = None,
+        tool_rule: ToolPolicySpec | None = None,
+    ) -> bool:
+        """Determine if a tool possesses external egress or network transmission capabilities."""
+        if tool_rule and any(c.lower() in ("external_egress", "egress") for c in (tool_rule.capabilities or [])):
+            return True
+        if catalog_entry:
+            if Capability.EXTERNAL_EGRESS.value in catalog_entry.capabilities or catalog_entry.untrusted_tool:
+                return True
+        name_lower = ref.qualified.lower()
+        egress_patterns = ("*mail*", "*email*", "*send*", "*post*", "*http*", "*curl*", "*webhook*", "*upload*")
+        return any(fnmatch.fnmatch(name_lower, pat) for pat in egress_patterns)
+
     def decide(
         self,
         ref: ToolRef,
@@ -43,7 +59,18 @@ class AclService:
                 matched_layer=PolicyLayer.USER,
             )
 
-        # 2. Session integrity guard (LOW integrity forces approval for state-modifying tools)
+        # 2. Check interactive / learned policy grants
+        for grant in self.policy.learned_grants:
+            if fnmatch.fnmatch(qualified.lower(), grant.pattern.lower()):
+                logger.info(f"ACL_ALLOW_LEARNED | tool={qualified} matched learned_grant={grant.pattern}")
+                return AclDecision(
+                    decision="ALLOW",
+                    reason=ReasonCode.APPROVAL_APPROVED_AND_SAVED,
+                    matched_rule=grant.pattern,
+                    matched_layer=PolicyLayer.LEARNED,
+                )
+
+        # 3. Session integrity guard (LOW integrity forces approval for state-modifying tools)
         if session.integrity == "LOW" and catalog_entry:
             tool_caps = set(catalog_entry.capabilities)
             if tool_caps.intersection(HIGH_RISK_CAPABILITIES):
@@ -54,10 +81,18 @@ class AclService:
                     matched_layer=PolicyLayer.PACK,
                 )
 
-        # 3. Match against user policy tool rules (in order of definition)
+        # 4. Match against user policy tool rules (in order of definition)
         for tool_rule in self.policy.tools:
             if fnmatch.fnmatch(qualified.lower(), tool_rule.match.lower()):
                 if not tool_rule.allow:
+                    # If tool is egress, ask developer for approval rather than silent deny
+                    if self._is_egress_tool(ref, catalog_entry, tool_rule=tool_rule):
+                        return AclDecision(
+                            decision="REQUIRE_APPROVAL",
+                            reason=ReasonCode.EGRESS_APPROVAL_REQUIRED,
+                            matched_rule=tool_rule.match,
+                            matched_layer=PolicyLayer.USER,
+                        )
                     return AclDecision(
                         decision="DENY",
                         reason=ReasonCode.TOOL_NOT_ALLOWED,
@@ -78,12 +113,20 @@ class AclService:
                     matched_layer=PolicyLayer.USER,
                 )
 
-        # 4. Fallback to default_tool_allow
+        # 5. Fallback to default_tool_allow or default deny
         if self.policy.default_tool_allow:
             return AclDecision(
                 decision="ALLOW",
                 reason=ReasonCode.OK,
                 matched_rule="default_tool_allow",
+                matched_layer=PolicyLayer.USER,
+            )
+
+        if self._is_egress_tool(ref, catalog_entry):
+            return AclDecision(
+                decision="REQUIRE_APPROVAL",
+                reason=ReasonCode.EGRESS_APPROVAL_REQUIRED,
+                matched_rule="default_deny",
                 matched_layer=PolicyLayer.USER,
             )
 
