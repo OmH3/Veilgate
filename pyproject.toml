@@ -25,13 +25,6 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-
-[project.urls]
-Homepage = "https://github.com/OmH3/Veilgate"
-Documentation = "https://github.com/OmH3/Veilgate#readme"
-Repository = "https://github.com/OmH3/Veilgate"
-Issues = "https://github.com/OmH3/Veilgate/issues"
-
 dependencies = [
     "fastmcp>=4.1.1,<5",
     "pydantic>=2.11,<3",
@@ -51,6 +44,12 @@ dependencies = [
     "rich>=13.0",
     "numpy>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/OmH3/Veilgate"
+Documentation = "https://github.com/OmH3/Veilgate#readme"
+Repository = "https://github.com/OmH3/Veilgate"
+Issues = "https://github.com/OmH3/Veilgate/issues"
 
 [project.optional-dependencies]
 presidio = [
